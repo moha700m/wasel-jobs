@@ -53,28 +53,37 @@ function setSel(){if($('#ql')){$('#ql').value=ME.prefs.lang;$('#qm').value=ME.pr
 function mailForm(){if(ME.mail)return `<div class="row"><div class="ico">${ic('mail')}</div><div><b dir="ltr">${esc(ME.mail.address)}</b><div><span class="st sent">${t('connected')} · ${ME.mail.type==='gmail'?'Gmail':ME.mail.type==='outlook'?'Outlook':'Gmail (كلمة مرور التطبيق)'}</span></div></div><span class="sp"></span><button class="btn sm" id="tm">${t('testmail')}</button><button class="btn sm" id="dm">${t('disconnect')}</button></div>`;
  const A=LANG==='ar';
  return `<div class="apcard"><div class="aphd"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><div><b>${A?'ربط Gmail بكلمة مرور التطبيق':'Connect Gmail with an App Password'}</b><div class="muted" style="font-size:13px">${A?'الطلبات تنرسل من إيميلك أنت مباشرة للشركات':'Applications are sent from your own Gmail'}</div></div><span class="badge">${A?'موصى به':'Recommended'}</span></div>
- <ol class="apsteps"><li>${A?'فعّل <b>التحقق بخطوتين</b> في حساب قوقل (إذا مو مفعّل):':'Turn on <b>2-Step Verification</b>:'} <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener" dir="ltr">myaccount.google.com/signinoptions/twosv</a></li>
- <li>${A?'افتح صفحة كلمات مرور التطبيقات:':'Open App passwords:'} <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" dir="ltr">myaccount.google.com/apppasswords</a></li>
- <li>${A?'اكتب اسم التطبيق <b>واصل</b> واضغط <b>إنشاء</b>':'Name the app <b>Wasel</b> and tap <b>Create</b>'}</li>
- <li>${A?'انسخ الرمز اللي طلع (١٦ حرف) والصقه تحت مع إيميلك':'Copy the 16-character code and paste it below'}</li></ol>
- <label>${A?'إيميل Gmail':'Gmail address'}</label><input id="mu" type="email" dir="ltr" placeholder="name@gmail.com" autocomplete="email" inputmode="email">
- <label>${A?'كلمة مرور التطبيق (١٦ حرف)':'App password (16 letters)'}</label><input id="mw" type="password" autocomplete="new-password" dir="ltr" placeholder="xxxx xxxx xxxx xxxx">
- <p class="muted" style="font-size:12.5px">${ic('lock',13)} ${A?'نحفظها مشفّرة ونستخدمها للإرسال فقط. تقدر تلغيها من حساب قوقل متى ما بغيت.':'Stored encrypted, used only for sending. Revoke it anytime in Google.'}</p>
- <div id="me" class="apmsg"></div><button class="btn p full" id="mv">${A?'تحقق':'Verify'}</button></div>
+ <div class="wz">
+ <div class="wzs" id="wz1"><div class="wzn">1</div><div class="wzb"><b>${A?'فعّل التحقق بخطوتين':'Turn on 2-Step Verification'}</b><div class="wzh">${A?'إذا مفعّل عندك تجاوز ✌️':'Already on? Skip it'}</div>
+  <a class="btn big full" href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener" onclick="wzDone(1)">${A?'فعّل التحقق بخطوتين ↗':'Turn on 2-Step ↗'}</a></div></div>
+ <div class="wzs" id="wz2"><div class="wzn">2</div><div class="wzb"><b>${A?'اطلع الكود':'Get your code'}</b><div class="wzh">${A?'سمّه <b>واصل</b> واضغط إنشاء، وانسخ الكود (١٦ حرف)':'Name it <b>Wasel</b>, tap Create, copy the 16-letter code'}</div>
+  <a class="btn big full" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" onclick="wzDone(2)">${A?'اطلع الكود ↗':'Get the code ↗'}</a></div></div>
+ <div class="wzs" id="wz3"><div class="wzn">3</div><div class="wzb"><b>${A?'الصق إيميلك والكود':'Paste your email and code'}</b>
+  <input id="mu" class="bigin" type="email" dir="ltr" placeholder="name@gmail.com" autocomplete="email" inputmode="email">
+  <input id="mw" class="bigin" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" dir="ltr" placeholder="xxxx xxxx xxxx xxxx">
+  <div class="wzh">${ic('lock',13)} ${A?'نحفظه مشفّر وللإرسال بس. تقدر تلغيه من قوقل متى ما بغيت.':'Stored encrypted, used only for sending.'}</div>
+  <div id="me" class="apmsg"></div><button class="btn p big full" id="mv">${A?'اربط إيميلي':'Connect'}</button></div></div>
+ </div></div>
  <div class="altrow">${CFG.google?`<a class="btn gbtn full sec" href="/api/mail/google/start"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>${A?'ربط Gmail بضغطة':'One-click Gmail'} <span class="soon">${A?'قريباً · للمختبرين فقط':'Soon · testers only'}</span></a>`:''}
  ${CFG.microsoft?`<a class="btn full sec" style="margin-top:10px" href="/api/mail/microsoft/start">${t('outlook')}</a>`:''}</div>`}
-function bindMail(after){if($('#mv'))$('#mv').onclick=async()=>{const A=LANG==='ar',M=$('#me'),pw=$('#mw').value.replace(/\s+/g,''),em=$('#mu').value.trim();M.className='apmsg';M.textContent='';
- const show=(ok,txt)=>{M.className='apmsg '+(ok?'ok':'bad');M.textContent=txt};
+window.wzDone=n=>{const e=$('#wz'+n);e&&e.classList.add('done')};
+function bindMail(after){if($('#mv')){const A=LANG==='ar',M=$('#me'),W=$('#mw'),U=$('#mu');
+ const show=(ok,txt,step)=>{M.className='apmsg big '+(ok?'ok':'bad');M.innerHTML=(ok?'✅ ':'⚠️ ')+txt;document.querySelectorAll('.wzs').forEach(x=>x.classList.remove('hl'));if(step){const s=$('#wz'+step);s.classList.add('hl');s.scrollIntoView({behavior:'smooth',block:'center'})}};
+ const clean=()=>{const v=W.value.replace(/[\s\u200e\u200f-]+/g,'');if(v!==W.value)W.value=v;return v};
+ let busy=0;const go=async()=>{if(busy)return;const pw=clean(),em=U.value.trim().toLowerCase();M.className='apmsg';M.textContent='';
  if(!/^\S+@\S+\.\S+$/.test(em))return show(0,A?'اكتب إيميل Gmail صحيح':'Enter a valid Gmail address');
- if(/@gmail\.com$/i.test(em)&&!/^[a-z]{16}$/i.test(pw))return show(0,A?'كلمة مرور التطبيق لازم تكون ١٦ حرف إنجليزي (بدون كلمة مرور حسابك العادية)':'The app password must be 16 letters (not your normal password)');
- $('#mv').disabled=true;$('#mv').textContent=A?'جاري التحقق…':'Verifying…';
- try{ME=await api('/api/mail/smtp',{method:'POST',body:{host:'smtp.gmail.com',port:465,user:em,pass:pw}});show(1,A?'تم الربط ✓ الطلبات بتنرسل من إيميلك':'Connected ✓');toast(t('connected')+' ✓');setTimeout(()=>after?after():settings(),900)}
- catch(e){const m={smtp_blocked:A?'بياناتك سليمة غالباً، لكن الإرسال يحتاج تفعيل من إدارة الموقع. بلّغناهم وبنرسل لك أول ما يتفعّل.':'Sending needs to be enabled by the site admin. Not your fault.',
-  badpass:A?'الإيميل أو كلمة مرور التطبيق غلط. تأكد إنك نسخت الرمز الجديد (١٦ حرف) ومو كلمة مرور حسابك.':'Wrong email or app password.',
-  need_2fa:A?'لازم تفعّل التحقق بخطوتين في حساب قوقل أول، وبعدها تسوي كلمة مرور تطبيق.':'Turn on 2-Step Verification first, then create an app password.',
-  badformat:A?'كلمة مرور التطبيق لازم تكون ١٦ حرف إنجليزي.':'App password must be 16 letters.',missing:A?'عبّ الإيميل وكلمة مرور التطبيق':'Fill both fields'};
-  show(0,m[e.error]||((A?'ما قدرنا نتحقق: ':'Could not verify: ')+(e.detail||e.error||'')))}
- if($('#mv')){$('#mv').disabled=false;$('#mv').textContent=LANG==='ar'?'تحقق':'Verify'}};
+ if(!/^[a-z]{16}$/i.test(pw))return show(0,A?'الكود لازم يكون ١٦ حرف إنجليزي، مو كلمة مرور حسابك. ارجع للخطوة ٢':'The code must be 16 letters. See step 2',2);
+ busy=1;$('#mv').disabled=true;$('#mv').textContent=A?'لحظة نتحقق…':'Verifying…';
+ try{ME=await api('/api/mail/smtp',{method:'POST',body:{host:'smtp.gmail.com',port:465,user:em,pass:pw}});show(1,A?'<b>تم الربط!</b> طلباتك بتطلع من إيميلك، وأرسلنا لك إيميل تأكيد':'<b>Connected!</b> Check your inbox for a confirmation');toast(t('connected')+' ✓');setTimeout(()=>after?after():settings(),1800)}
+ catch(e){const m={smtp_blocked:[A?'فيه مشكلة عندنا مو عندك، جرّب بعد شوي':'Server issue, try again later'],
+  badpass:[A?'الكود أو الإيميل غلط. اطلع كود جديد من الخطوة ٢ والصقه':'Wrong email or code. Get a new one in step 2',2],
+  need_2fa:[A?'لازم تفعّل التحقق بخطوتين أول، روح للخطوة ١':'Turn on 2-Step Verification first (step 1)',1],
+  badformat:[A?'الكود لازم ١٦ حرف إنجليزي. الخطوة ٢':'Code must be 16 letters (step 2)',2],missing:[A?'عبّ الإيميل والكود':'Fill both fields']};
+  const r=m[e.error]||[(A?'ما قدرنا نتحقق، جرّب مرة ثانية':'Could not verify, try again')];show(0,r[0],r[1])}
+ busy=0;$('#mv').disabled=false;$('#mv').textContent=A?'اربط إيميلي':'Connect'};
+ $('#mv').onclick=go;
+ W.addEventListener('input',()=>{const v=clean();if(/^[a-z]{16}$/i.test(v)&&/^\S+@\S+\.\S+$/.test(U.value.trim()))go()});
+ U.addEventListener('change',()=>{if(/^[a-z]{16}$/i.test(clean()))go()});}
  if($('#tm'))$('#tm').onclick=async()=>{try{await api('/api/mail/test',{method:'POST'});toast('✓')}catch(e){toast(e.detail||'Error')}};
  if($('#dm'))$('#dm').onclick=async()=>{ME=await api('/api/mail',{method:'DELETE'});settings()};}
 const gchip=j=>{const g=j.gender||'open';return g==='women_only'?`<span class="chip f">♀ ${t('g_fonly')}</span>`:g==='men_only'?`<span class="chip m">♂ ${t('g_mo')}</span>`:g==='women_preferred'?`<span class="chip f">${t('g_fp')}</span>`:`<span class="chip">${t('g_open')}</span>`};

@@ -18,7 +18,8 @@ fs.mkdirSync(path.join(DATA, 'cv'), { recursive: true });
 const DBF = path.join(DATA, 'db.json');
 let db = fs.existsSync(DBF) ? JSON.parse(fs.readFileSync(DBF, 'utf8')) : { users: [], jobs: [], apps: [], seq: 1 };
 // Optional persistent Postgres (DATABASE_URL): whole state as one JSONB row + CV files as bytea.
-const PG = process.env.DATABASE_URL ? new (require('pg').Pool)({ connectionString: process.env.DATABASE_URL, ssl: /render\.com|neon|supabase/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : false }) : null;
+const DATABASE_URL = process.env.DATABASE_URL || (process.env.DATABASE_URL_B64 ? Buffer.from(process.env.DATABASE_URL_B64, 'base64').toString('utf8') : '') || ((process.env.DB_P1 && process.env.DB_P2 && process.env.DB_P3) ? Buffer.from(process.env.DB_P1 + process.env.DB_P2 + process.env.DB_P3, 'base64').toString('utf8') : '');
+const PG = DATABASE_URL ? new (require('pg').Pool)({ connectionString: DATABASE_URL, ssl: /render\.com|neon|supabase/.test(DATABASE_URL) ? { rejectUnauthorized: false } : false }) : null;
 let pgTimer = null;
 const save = () => { fs.writeFileSync(DBF + '.tmp', JSON.stringify(db)); fs.renameSync(DBF + '.tmp', DBF);
   if (PG) { clearTimeout(pgTimer); pgTimer = setTimeout(() => PG.query('INSERT INTO kv(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', ['db', JSON.stringify(db)]).catch(e => console.error('pg save', e.message)), 300); } };
@@ -34,7 +35,15 @@ async function boot() {
     for (const u of db.users) if (u.cv) u.cv.file = path.join(DATA, 'cv', path.basename(u.cv.file));
     console.log('Postgres storage: loaded', db.users.length, 'users');
   }
-  seedJobs(); save();
+  // Migrate: if jobs lack type/gender audience, rebuild from seed (preserve id by email+title when possible)
+  if (!db.jobs.length || db.jobs.some(j => !j.type || !['women_only','men_only','women_preferred','open'].includes(j.gender))) {
+    const old = db.jobs.slice(); db.jobs = [];
+    for (const j of SEED) {
+      const prev = old.find(x => x.email === j.email && x.title === j.title);
+      db.jobs.push({ id: prev?.id || db.seq++, ...j, added: prev?.added || new Date().toISOString() });
+    }
+  } else seedJobs();
+  save();
 }
 
 // ---------- crypto helpers (secrets never logged / returned) ----------
@@ -171,11 +180,12 @@ function score(u, j) {
   const cities = u.prefs.cities.length ? u.prefs.cities : [p.city];
   if (cities.some(c => c && norm(j.city).includes(norm(c)))) s += 15; else if (/saudi|eastern/i.test(j.city)) s += 8;
   if (j.kind === 'open') s += 3;
-  if (u.profile.gender && j.gender && j.gender.startsWith(u.profile.gender)) s += 5;
+  if (u.profile.gender === 'f' && j.gender === 'women_only') s += 8; if (u.profile.gender === 'f' && j.gender === 'women_preferred') s += 5; if (u.profile.gender === 'm' && j.gender === 'men_only') s += 8;
   return Math.min(100, s);
 }
 const applied = u => new Set(db.apps.filter(a => a.uid === u.id && a.status !== 'draft').map(a => a.to.toLowerCase()));
-const genderOk = (u, j) => !u.profile.gender || !j.gender || ['any', 'fp', 'mp'].includes(j.gender) || j.gender === u.profile.gender;
+const audienceFor = g => g === 'f' ? ['women_only', 'women_preferred', 'open'] : g === 'm' ? ['men_only', 'open'] : null;
+const genderOk = (u, j) => { const a = audienceFor(u.profile.gender); if (!a) return true; return a.includes(j.gender || 'open'); };
 app.get('/api/jobs', auth, (req, res) => {
   const done = applied(req.u);
   res.json(db.jobs.filter(j => !j.hidden && genderOk(req.u, j)).map(j => ({ ...j, score: score(req.u, j), applied: done.has(j.email.toLowerCase()) })).sort((a, b) => b.score - a.score));

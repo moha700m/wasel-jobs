@@ -53,17 +53,51 @@ function mailForm(){if(ME.mail)return `<div class="row"><div class="ico">${ic('m
 function bindMail(after){if($('#mv'))$('#mv').onclick=async()=>{$('#mv').disabled=true;$('#me').textContent='';try{ME=await api('/api/mail/smtp',{method:'POST',body:{host:$('#mh').value,port:$('#mp').value,user:$('#mu').value,pass:$('#mw').value}});toast(t('connected')+' ✓');after?after():settings()}catch(e){$('#me').textContent=(LANG==='ar'?'ما قدرنا نتحقق: ':'Verification failed: ')+(e.detail||e.error)}$('#mv')&&($('#mv').disabled=false)};
  if($('#tm'))$('#tm').onclick=async()=>{try{await api('/api/mail/test',{method:'POST'});toast('✓')}catch(e){toast(e.detail||'Error')}};
  if($('#dm'))$('#dm').onclick=async()=>{ME=await api('/api/mail',{method:'DELETE'});settings()};}
-const gchip=j=>j.gender==='f'?`<span class="chip f">♀ ${t('g_fonly')}</span>`:j.gender==='m'?`<span class="chip m">♂ ${t('g_mo')}</span>`:j.gender==='fp'?`<span class="chip f">${t('g_fp')}</span>`:'';
-async function jobs(){V().innerHTML=tabs('jobs')+'<div class="grid">'+'<div class="skel"></div>'.repeat(4)+'</div>';const js=await api('/api/jobs');const good=js.filter(j=>j.score>=40&&!j.applied).length;
+const gchip=j=>{const g=j.gender||'open';return g==='women_only'?`<span class="chip f">♀ ${t('g_fonly')}</span>`:g==='men_only'?`<span class="chip m">♂ ${t('g_mo')}</span>`:g==='women_preferred'?`<span class="chip f">${t('g_fp')}</span>`:`<span class="chip">${t('g_open')}</span>`};
+let JOBS_CACHE=[], JOB_FILTER='for_me';
+const jobCard=j=>`<label class="card hov job" data-g="${esc(j.gender||'open')}" data-type="${esc(j.type||'')}"><div class="score ${j.score<40?'lo':''}" style="--v:${j.score}">${j.score}%</div><div style="flex:1;min-width:0"><h3 style="margin:0;font-size:17px">${esc(LANG==='ar'?j.title_ar:j.title)}</h3><div class="m">${esc(j.company)} · ${ic('pin',13)} ${esc(j.city)}</div>
+ <div>${gchip(j)}<span class="chip o">${esc(LANG==='ar'?j.type:j.type_en||j.type)}</span>${j.kind==='open'?`<span class="chip o">${t('open')}</span>`:''}${j.skills.slice(0,2).map(s=>`<span class="chip">${esc(s)}</span>`).join('')}</div><div class="m" style="margin-top:6px"><a class="ok" href="${esc(j.source)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${t('source')} ${ic('ext',12)}</a> · ${esc(j.posted)}</div></div>
+ <div>${j.applied?`<span class="st sent">${t('applied')}</span>`:`<input type="checkbox" class="pick" value="${j.id}">`}</div></label>`;
+function filterJobs(all,f){
+  const g=ME.profile.gender;
+  if(f==='women') return all.filter(j=>['women_only','women_preferred'].includes(j.gender));
+  if(f==='men') return all.filter(j=>j.gender==='men_only');
+  if(f==='open') return all.filter(j=>j.gender==='open'||j.gender==='women_preferred');
+  // for_me: already filtered server-side for gender
+  return all;
+}
+function groupByType(list){
+  const order=['صحة','تعليم','مبيعات','ضيافة','إداري','تقنية','نظافة','أمن','هندسة','صناعة'];
+  const map={}; list.forEach(j=>{const k=j.type||'أخرى';(map[k]=map[k]||[]).push(j)});
+  const keys=[...order.filter(k=>map[k]),...Object.keys(map).filter(k=>!order.includes(k))];
+  return keys.map(k=>({type:k,type_en:map[k][0].type_en||k,jobs:map[k]}));
+}
+function renderJobList(){
+  const list=filterJobs(JOBS_CACHE,JOB_FILTER);
+  const groups=groupByType(list);
+  const body=groups.length?groups.map(g=>`<div class="type-block"><div class="type-h"><span>${esc(LANG==='ar'?g.type:g.type_en)}</span><span class="muted">${g.jobs.length}</span></div><div class="grid">${g.jobs.map(jobCard).join('')}</div></div>`).join(''):`<div class="card empty"><p>${LANG==='ar'?'ما فيه وظائف بهالقسم':'No jobs in this section'}</p></div>`;
+  $('#joblist').innerHTML=body;
+  $('#jcount').textContent=list.length;
+  const upd=()=>$('#cnt').textContent=$$('.pick:checked').length;$$('.pick').forEach(c=>c.onchange=upd);upd();
+}
+async function jobs(){V().innerHTML=tabs('jobs')+'<div class="grid">'+'<div class="skel"></div>'.repeat(4)+'</div>';JOBS_CACHE=await api('/api/jobs');const js=JOBS_CACHE;const good=js.filter(j=>j.score>=40&&!j.applied).length;
  const first=(ME.profile.name||'').split(' ')[0];
+ const g=ME.profile.gender;
+ // Default filter: for_me. Tabs depend on gender — hide opposite-only section.
+ const tabsHtml = g==='f'
+   ? `<button class="seg on" data-f="for_me">${t('sec_women')}</button><button class="seg" data-f="open">${t('sec_open')}</button>`
+   : g==='m'
+   ? `<button class="seg on" data-f="for_me">${t('sec_men')}</button><button class="seg" data-f="open">${t('sec_open')}</button>`
+   : `<button class="seg on" data-f="for_me">${t('sec_all')}</button><button class="seg" data-f="women">${t('sec_women')}</button><button class="seg" data-f="men">${t('sec_men')}</button>`;
+ JOB_FILTER='for_me';
  V().innerHTML=tabs('jobs')+`<div class="fade"><div class="hello">${t('hi')} ${esc(first)} 👋</div><p>${t('hi_s')}</p>
  <div class="kpis"><div><b>${good}</b><span>${t('k_m')}</span></div><div><b>${ME.sentToday}<small class="muted">/${ME.prefs.dailyCap}</small></b><span>${t('k_s')}</span></div><div><b>${js.filter(j=>j.applied).length}</b><span>${t('k_t')}</span></div></div>
- <div class="row" style="margin:6px 0 14px;position:sticky;top:72px;z-index:5;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(10px);padding:8px 0"><span class="muted">${js.length} ${LANG==='ar'?'وظيفة':'jobs'}</span><span class="sp"></span><button class="btn sm" id="best">${ic('spark',16)} ${t('selall')}</button><button class="btn sm p" id="dr">${t('apply')} (<span id="cnt">0</span>)</button></div>
- <div class="grid">${js.map(j=>`<label class="card hov job"><div class="score ${j.score<40?'lo':''}" style="--v:${j.score}">${j.score}%</div><div style="flex:1;min-width:0"><h3 style="margin:0;font-size:17px">${esc(LANG==='ar'?j.title_ar:j.title)}</h3><div class="m">${esc(j.company)} · ${ic('pin',13)} ${esc(j.city)}</div>
- <div>${gchip(j)}${j.kind==='open'?`<span class="chip o">${t('open')}</span>`:''}${j.skills.slice(0,3).map(s=>`<span class="chip">${esc(s)}</span>`).join('')}</div><div class="m" style="margin-top:6px"><a class="ok" href="${esc(j.source)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${t('source')} ${ic('ext',12)}</a> · ${esc(j.posted)}</div></div>
- <div>${j.applied?`<span class="st sent">${t('applied')}</span>`:`<input type="checkbox" class="pick" value="${j.id}">`}</div></label>`).join('')}</div></div>`;
- const upd=()=>$('#cnt').textContent=$$('.pick:checked').length;$$('.pick').forEach(c=>c.onchange=upd);
- $('#best').onclick=()=>{$$('.pick').forEach(c=>c.checked=js.find(j=>j.id==c.value).score>=40);upd()};
+ <div class="segbar">${tabsHtml}</div>
+ <div class="row" style="margin:6px 0 14px;position:sticky;top:72px;z-index:5;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(10px);padding:8px 0"><span class="muted"><span id="jcount">${js.length}</span> ${LANG==='ar'?'وظيفة':'jobs'} · ${t('by_type')}</span><span class="sp"></span><button class="btn sm" id="best">${ic('spark',16)} ${t('selall')}</button><button class="btn sm p" id="dr">${t('apply')} (<span id="cnt">0</span>)</button></div>
+ <div id="joblist"></div></div>`;
+ renderJobList();
+ $$('.seg').forEach(b=>b.onclick=()=>{$$('.seg').forEach(x=>x.classList.remove('on'));b.classList.add('on');JOB_FILTER=b.dataset.f;renderJobList()});
+ $('#best').onclick=()=>{$$('.pick').forEach(c=>{const j=JOBS_CACHE.find(x=>x.id==c.value);c.checked=j&&j.score>=40});$('#cnt').textContent=$$('.pick:checked').length};
  $('#dr').onclick=async()=>{const ids=$$('.pick:checked').map(c=>+c.value);if(!ids.length)return toast(LANG==='ar'?'اختر وظيفة وحدة على الأقل':'Pick at least one job');await api('/api/apps/draft',{method:'POST',body:{jobIds:ids}});location.hash='#/apps'};}
 const paras=b=>b.split(/\n{2,}/).map(p=>p.trim()==='———'?'<hr>':`<p dir="auto">${esc(p)}</p>`).join('');
 async function apps(){const as=await api('/api/apps');const dr=as.filter(a=>a.status==='draft'),hist=as.filter(a=>a.status!=='draft');

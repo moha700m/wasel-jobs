@@ -11,6 +11,7 @@ const ENC_KEY = crypto.createHash('sha256').update(process.env.ENC_KEY || SECRET
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const GLOBAL_DRY = process.env.DRY_RUN === '1';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const MS_ID = process.env.MS_CLIENT_ID, MS_SECRET = process.env.MS_CLIENT_SECRET;
 const G_ID = process.env.GOOGLE_CLIENT_ID, G_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 fs.mkdirSync(path.join(DATA, 'cv'), { recursive: true });
 
@@ -87,7 +88,7 @@ app.post('/api/login', async (req, res) => {
 });
 app.post('/api/logout', (req, res) => { res.clearCookie('s'); res.json({ ok: 1 }); });
 app.get('/api/me', auth, (req, res) => res.json(pub(req.u)));
-app.get('/api/config', (req, res) => res.json({ google: !!(G_ID && G_SECRET), dryRun: GLOBAL_DRY, smtp: process.env.SMTP_ENABLED !== '0' }));
+app.get('/api/config', (req, res) => res.json({ microsoft: !!(MS_ID && MS_SECRET), google: !!(G_ID && G_SECRET), dryRun: GLOBAL_DRY, smtp: process.env.SMTP_ENABLED !== '0' }));
 
 // ---------- CV parsing ----------
 const CITIES = { 'riyadh': 'Riyadh', 'الرياض': 'Riyadh', 'jeddah': 'Jeddah', 'جدة': 'Jeddah', 'جده': 'Jeddah', 'dammam': 'Dammam', 'الدمام': 'Dammam',
@@ -146,6 +147,21 @@ app.get('/api/mail/google/start', auth, (req, res) => {
   res.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({ client_id: G_ID, redirect_uri: BASE_URL + '/api/mail/google/callback',
     response_type: 'code', access_type: 'offline', prompt: 'consent', scope: 'openid email https://www.googleapis.com/auth/gmail.send', state }));
 });
+const MS_AUTH = 'https://login.microsoftonline.com/common/oauth2/v2.0/', MS_SCOPE = 'openid email offline_access User.Read Mail.Send';
+app.get('/api/mail/microsoft/start', auth, (req, res) => {
+  if (!MS_ID) return res.status(501).send('Microsoft OAuth not configured');
+  res.redirect(MS_AUTH + 'authorize?' + new URLSearchParams({ client_id: MS_ID, redirect_uri: BASE_URL + '/api/mail/microsoft/callback', response_type: 'code', scope: MS_SCOPE, prompt: 'select_account', state: sign(String(req.u.id) + ':' + Date.now()) }));
+});
+const msToken = p => fetch(MS_AUTH + 'token', { method: 'POST', body: new URLSearchParams({ client_id: MS_ID, client_secret: MS_SECRET, scope: MS_SCOPE, ...p }) }).then(r => r.json());
+app.get('/api/mail/microsoft/callback', async (req, res) => {
+  const st = unsign(req.query.state || ''); const u = st && db.users.find(x => x.id == st.split(':')[0]);
+  if (!u || !req.query.code || Date.now() - +st.split(':')[1] > 15 * 60e3) return res.redirect('/app#/settings?mail=error');
+  const t = await msToken({ code: req.query.code, redirect_uri: BASE_URL + '/api/mail/microsoft/callback', grant_type: 'authorization_code' });
+  if (!t.refresh_token) { console.error('ms oauth', t.error); return res.redirect('/app#/settings?mail=error'); }
+  const me = await (await fetch('https://graph.microsoft.com/v1.0/me', { headers: { Authorization: 'Bearer ' + t.access_token } })).json();
+  u.mail = { type: 'outlook', address: me.mail || me.userPrincipalName, fromName: u.profile.name, verified: new Date().toISOString(), secret: enc({ refresh: t.refresh_token }) };
+  save(); res.redirect('/app#/settings?mail=ok');
+});
 app.get('/api/mail/google/callback', async (req, res) => {
   const st = unsign(req.query.state || ''); const u = st && db.users.find(x => x.id == st.split(':')[0]);
   if (!u || !req.query.code || Date.now() - +st.split(':')[1] > 15 * 60e3) return res.redirect('/app#/settings?mail=error');
@@ -163,6 +179,14 @@ async function deliver(u, msg) {
   if (!u.mail) throw new Error('no-mail');
   const s = dec(u.mail.secret); const from = { name: u.mail.fromName || u.profile.name, address: u.mail.address };
   if (u.mail.type === 'smtp') return nodemailer.createTransport(s).sendMail({ from, ...msg });
+  if (u.mail.type === 'outlook') {
+    const t = await msToken({ refresh_token: s.refresh, grant_type: 'refresh_token' }); if (!t.access_token) throw new Error('outlook auth ' + (t.error || ''));
+    if (t.refresh_token) { u.mail.secret = enc({ refresh: t.refresh_token }); save(); }
+    const atts = []; for (const a of msg.attachments || []) atts.push({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.filename, contentBytes: (await fs.promises.readFile(a.path)).toString('base64') });
+    const body = { message: { subject: msg.subject, body: msg.html ? { contentType: 'HTML', content: msg.html } : { contentType: 'Text', content: msg.text }, toRecipients: [{ emailAddress: { address: msg.to } }], attachments: atts }, saveToSentItems: true };
+    const r = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', { method: 'POST', headers: { Authorization: 'Bearer ' + t.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('outlook ' + r.status); return;
+  }
   const tok = await (await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ client_id: G_ID, client_secret: G_SECRET, refresh_token: s.refresh, grant_type: 'refresh_token' }) })).json();
   if (!tok.access_token) throw new Error('gmail auth ' + (tok.error || ''));
   const raw = (await new MailComposer({ from, ...msg }).compile().build()).toString('base64url');

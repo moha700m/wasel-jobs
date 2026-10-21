@@ -1,50 +1,48 @@
-# تفعيل «ربط Gmail بضغطة» في واصل
+# تفعيل «ربط Gmail بضغطة» في واصل (15 دقيقة)
 
-الكود جاهز ويحتاج بس مفتاحين من Google: `GOOGLE_CLIENT_ID` و`GOOGLE_CLIENT_SECRET`. الخطوات تاخذ قرابة ١٠ دقائق.
+الإيميلات تطلع من إيميل الباحث نفسه عبر Gmail API (HTTPS)، وهذا يشتغل على Render المجاني.
 
-## ١) أنشئ مشروع
+## 1) إنشاء المشروع
 1. افتح https://console.cloud.google.com وسجّل دخول بحسابك.
-2. من أعلى الصفحة اضغط اختيار المشروع ← **New Project**، وسمّه `Wasel` ← **Create**.
+2. من الأعلى: Select project ← New Project ← الاسم: `Wasel` ← Create.
 
-## ٢) فعّل Gmail API
-1. القائمة ← **APIs & Services ← Library**.
-2. ابحث عن **Gmail API** ← **Enable**.
+## 2) تفعيل Gmail API
+- APIs & Services ← Library ← ابحث `Gmail API` ← Enable.
 
-## ٣) شاشة الموافقة (OAuth consent screen / Google Auth Platform)
-1. **APIs & Services ← OAuth consent screen** (أو **Google Auth Platform ← Branding**) ← **Get started**.
-2. App name: `واصل Wasel`، والـ User support email إيميلك.
-3. Audience: **External**.
-4. Contact email: إيميلك ← وافق ← **Create**.
-5. في **Branding** حط:
-   - Home page: `https://wasel-jobs.onrender.com`
-   - Privacy policy: `https://wasel-jobs.onrender.com/privacy`
-   - Terms: `https://wasel-jobs.onrender.com/terms`
-   - Authorized domains: `onrender.com` (أو دومينك إذا ربطت دومين).
-6. **Data Access ← Add or remove scopes**: أضف `https://www.googleapis.com/auth/gmail.send` و`openid` و`email` ← **Update ← Save**.
-7. **Audience ← Test users ← Add users**: أضف إيميلات Gmail اللي بتجرب فيها، بحد أقصى ١٠٠ وأنت في وضع Testing.
+## 3) شاشة الموافقة (OAuth consent screen / Google Auth Platform)
+1. User type: **External** ← Create.
+2. App name: `واصل Wasel`، وUser support email وDeveloper contact: إيميلك.
+3. App domain (اختياري الحين):
+   - Home: `https://wasel-jobs.onrender.com`
+   - Privacy: `https://wasel-jobs.onrender.com/privacy.html`
+   - Terms: `https://wasel-jobs.onrender.com/terms.html`
+4. Scopes (Data Access) ← Add: `openid`، `.../auth/userinfo.email`، `https://www.googleapis.com/auth/gmail.send`.
+5. **Test users (Audience) ← Add users**: أضف إيميلات Gmail اللي بتجرب (إيميلك وأصحابك، لين 100 شخص). هذول يقدرون يربطون فوراً بدون مراجعة قوقل.
+   - تطلع لهم شاشة «Google hasn't verified this app» ← Continue. هذا طبيعي.
+   - في وضع Testing صلاحية الربط تنتهي بعد 7 أيام، ويعيد المستخدم الربط.
 
-## ٤) أنشئ مفاتيح OAuth
-1. **APIs & Services ← Credentials ← Create Credentials ← OAuth client ID** (أو **Google Auth Platform ← Clients ← Create client**).
-2. Application type: **Web application**، والاسم `Wasel Web`.
-3. **Authorized redirect URIs ← Add URI** والصق هذا حرفياً:
-   ```
-   https://wasel-jobs.onrender.com/api/mail/google/callback
-   ```
-4. **Create**، وانسخ الـ Client ID والـ Client secret. لا ترسلها في أي محادثة.
+## 4) إنشاء المفاتيح
+1. APIs & Services ← Credentials ← Create credentials ← OAuth client ID.
+2. Application type: **Web application**.
+3. Authorized redirect URIs: `https://wasel-jobs.onrender.com/api/mail/google/callback` (لازم تكون مطابقة حرفياً).
+4. Create ← انسخ Client ID و Client secret.
 
-## ٥) حطها في Render
-1. https://dashboard.render.com ← خدمة **wasel-jobs** ← **Environment**.
-2. أضف `GOOGLE_CLIENT_ID` و`GOOGLE_CLIENT_SECRET` ← **Save, rebuild and deploy**.
-3. بعد دقيقتين يصير زر «ربط Gmail بضغطة» شغّال.
+## 5) حطها في Render (لا ترسلها بالشات)
+- Render ← خدمة `wasel-jobs` ← Environment ← أضف `GOOGLE_CLIENT_ID` و `GOOGLE_CLIENT_SECRET` ← Save (يعيد النشر تلقائياً).
+- بعدها يظهر زر «ربط Gmail بضغطة» في الإعدادات.
 
-## ٦) جرّب
-سجّل بإيميل من الـ Test users ← الإعدادات ← «ربط Gmail بضغطة» ← وافق. إذا طلعت لك «Google hasn't verified this app» اضغط **Continue**، وهذا طبيعي في وضع Testing.
+## 6) للإطلاق للعامة (بعدين)
+- `gmail.send` صلاحية حساسة (sensitive). اضغط Publish app ← Prepare for verification.
+- قوقل تطلب: دومين موثّق باسمك، صفحة خصوصية على نفس الدومين، وفيديو يوضح استخدام الصلاحية.
+- مدة المراجعة تقريباً من أيام إلى أسابيع. قبلها أضف المستخدمين كـ Test users.
 
-## ٧) للإطلاق العام
-- صلاحية `gmail.send` حساسة (sensitive). عشان يستخدمها أي أحد بدون قائمة Test users، لازم **Publish app** ثم طلب **Verification** من Google. يطلبون فيديو يشرح الاستخدام، وصفحة خصوصية، ودومين موثّق في Search Console، والمراجعة تاخذ من أيام إلى أسابيع.
-- ينصح بدومين خاص بدل onrender.com. إذا غيرته حدّث الـ redirect URI ومتغير `BASE_URL`.
+---
 
-## أمان
-- التطبيق يطلب صلاحية الإرسال فقط، وما يقرأ الإيميلات.
-- الـ refresh token يتخزن مشفر بـ AES-256-GCM، وما ينطبع في أي سجل.
-- المستخدم يقدر يفصل الربط من الإعدادات، أو من https://myaccount.google.com/permissions
+# اختياري: ربط Outlook / Hotmail
+1. https://entra.microsoft.com ← App registrations ← New registration.
+2. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**.
+3. Redirect URI (Web): `https://wasel-jobs.onrender.com/api/mail/microsoft/callback`.
+4. API permissions ← Microsoft Graph ← Delegated: `Mail.Send`، `User.Read`، `offline_access`، `openid`، `email`.
+5. Certificates & secrets ← New client secret ← انسخ **Value**.
+6. في Render أضف `MS_CLIENT_ID` (Application ID) و `MS_CLIENT_SECRET`.
+- يشتغل فوراً لأي حساب Hotmail/Outlook (يوافق المستخدم بنفسه). حسابات بعض الشركات قد تحتاج موافقة الأدمن عندهم.

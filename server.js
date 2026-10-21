@@ -196,7 +196,8 @@ app.post('/api/admin/jobs', (req, res) => {
   if (!ADMIN_TOKEN || req.get('x-admin-token') !== ADMIN_TOKEN) return res.status(403).json({ error: 'forbidden' });
   const j = req.body; if (!j.company || !j.title || !/@/.test(j.email || '') || !/^https?:/.test(j.source || '')) return res.status(400).json({ error: 'company,title,email,source required' });
   const job = { id: db.seq++, company: j.company, title: j.title, title_ar: j.title_ar || j.title, city: j.city || 'Saudi Arabia', email: j.email, source: j.source,
-    skills: j.skills || [], subject_format: j.subject_format || null, posted: j.posted || new Date().toISOString().slice(0, 10), kind: j.kind || 'vacancy', added: new Date().toISOString() };
+    skills: j.skills || [], subject_format: j.subject_format || null, posted: j.posted || new Date().toISOString().slice(0, 10), kind: j.kind || 'vacancy',
+    gender: ['women_only', 'men_only', 'women_preferred', 'open'].includes(j.gender) ? j.gender : 'open', type: j.type || 'إداري', type_en: j.type_en || j.type || 'Admin', added: new Date().toISOString() };
   db.jobs.push(job); save(); res.json(job);
 });
 

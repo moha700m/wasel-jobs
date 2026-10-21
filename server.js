@@ -12,7 +12,8 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const GLOBAL_DRY = process.env.DRY_RUN === '1';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const MS_ID = process.env.MS_CLIENT_ID, MS_SECRET = process.env.MS_CLIENT_SECRET;
-const G_ID = process.env.GOOGLE_CLIENT_ID, G_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const _b64 = v => { try { return v ? Buffer.from(v, 'base64').toString('utf8').trim() : ''; } catch { return ''; } };
+const G_ID = process.env.GOOGLE_CLIENT_ID || _b64(process.env.GID_B64), G_SECRET = process.env.GOOGLE_CLIENT_SECRET || _b64((process.env.GSEC_P1 || '') + (process.env.GSEC_P2 || ''));
 fs.mkdirSync(path.join(DATA, 'cv'), { recursive: true });
 
 // ---------- tiny JSON store ----------

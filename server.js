@@ -44,6 +44,8 @@ async function boot() {
       const prev = old.find(x => x.email === j.email && x.title === j.title);
       db.jobs.push({ id: prev?.id || db.seq++, ...j, added: prev?.added || new Date().toISOString() });
     }
+    // keep admin-added jobs (not in seed), normalised
+    for (const x of old) if (!SEED.some(j => j.email === x.email && j.title === x.title)) db.jobs.push({ ...x, gender: ['women_only','men_only','women_preferred','open'].includes(x.gender) ? x.gender : 'open', type: x.type || 'إداري', type_en: x.type_en || 'Admin' });
   } else seedJobs();
   save();
 }

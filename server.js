@@ -22,6 +22,16 @@ let db = fs.existsSync(DBF) ? JSON.parse(fs.readFileSync(DBF, 'utf8')) : { users
 // Optional persistent Postgres (DATABASE_URL): whole state as one JSONB row + CV files as bytea.
 const _dec = s => { try { return Buffer.from(s || '', 'base64').toString('utf8'); } catch { return ''; } };
 const _isPg = s => /^postgres(ql)?:\/\//.test(s || '');
+const RELAY_URL = process.env.RELAY_URL || '', RELAY_SECRET = process.env.RELAY_SECRET || _b64((process.env.RLY_P1 || '') + (process.env.RLY_P2 || '') + (process.env.RLY_P3 || ''));
+async function relaySend(cfg, msg) {
+  const atts = []; for (const a of msg.attachments || []) atts.push({ filename: a.filename, contentType: a.contentType || ({ '.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.doc': 'application/msword' }[path.extname(a.filename || '').toLowerCase()]), base64: (await fs.promises.readFile(a.path)).toString('base64') });
+  const r = await fetch(RELAY_URL.replace(/\/$/, '') + '/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Relay-Secret': RELAY_SECRET }, signal: AbortSignal.timeout(45000),
+    body: JSON.stringify({ host: cfg.host, port: cfg.port, user: cfg.auth.user, appPassword: cfg.auth.pass, fromName: msg.fromName, to: msg.to, replyTo: msg.replyTo, subject: msg.subject, text: msg.text, html: msg.html, attachments: atts }) });
+  const j = await r.json().catch(() => ({ ok: false, error: 'relay_' + r.status }));
+  if (!j.ok) throw Object.assign(new Error('relay ' + j.error + ' ' + (j.detail || '')), { relayError: j.error, smtpCode: j.smtpCode });
+  return j;
+}
+const useRelay = cfg => !!(RELAY_URL && RELAY_SECRET && cfg.port === 465);
 const DATABASE_URL = [process.env.DATABASE_URL, _dec(process.env.DATABASE_URL_B64), _dec((process.env.DB_P1 || '') + (process.env.DB_P2 || '') + (process.env.DB_P3 || ''))].find(_isPg) || '';
 let PG = DATABASE_URL ? new (require('pg').Pool)({ connectionString: DATABASE_URL, ssl: /render\.com|neon|supabase/.test(DATABASE_URL) ? { rejectUnauthorized: false } : false }) : null;
 let pgTimer = null;
@@ -89,7 +99,7 @@ app.post('/api/login', async (req, res) => {
 });
 app.post('/api/logout', (req, res) => { res.clearCookie('s'); res.json({ ok: 1 }); });
 app.get('/api/me', auth, (req, res) => res.json(pub(req.u)));
-app.get('/api/config', (req, res) => res.json({ microsoft: !!(MS_ID && MS_SECRET), google: !!(G_ID && G_SECRET), dryRun: GLOBAL_DRY, smtp: process.env.SMTP_ENABLED !== '0' }));
+app.get('/api/config', (req, res) => res.json({ microsoft: !!(MS_ID && MS_SECRET), google: !!(G_ID && G_SECRET), dryRun: GLOBAL_DRY, smtp: process.env.SMTP_ENABLED !== '0', relay: !!(RELAY_URL && RELAY_SECRET) }));
 
 // ---------- CV parsing ----------
 const CITIES = { 'riyadh': 'Riyadh', 'الرياض': 'Riyadh', 'jeddah': 'Jeddah', 'جدة': 'Jeddah', 'جده': 'Jeddah', 'dammam': 'Dammam', 'الدمام': 'Dammam',
@@ -139,7 +149,14 @@ app.post('/api/mail/smtp', auth, async (req, res) => {
   if (!user || !pass) return res.status(400).json({ error: 'missing' });
   if (/gmail\.com$/.test(user) && !/^[a-z]{16}$/i.test(pass)) return res.status(400).json({ error: 'badformat' });
   const cfg = { host, port, secure: port === 465, auth: { user, pass } };
-  try { await nodemailer.createTransport({ ...cfg, connectionTimeout: 12000, greetingTimeout: 10000, socketTimeout: 15000 }).verify(); }
+  if (useRelay(cfg)) {
+    try { await relaySend(cfg, { fromName: fromName || req.u.profile.name, to: user, subject: 'واصل ✓ تم ربط إيميلك', text: 'تم ربط إيميلك بواصل بنجاح، وطلبات التوظيف بتنرسل من إيميلك هذا.\n\nYour Gmail is connected to Wasel.' }); }
+    catch (e) {
+      const map = { auth_failed: 'badpass', need_app_password: 'need_2fa', connection_failed: 'smtp_blocked' };
+      console.warn('[relay-verify]', e.relayError, e.smtpCode);
+      return res.status(400).json({ error: map[e.relayError] || 'verify', detail: String(e.message).split(pass).join('***').slice(0, 160) });
+    }
+  } else try { await nodemailer.createTransport({ ...cfg, connectionTimeout: 12000, greetingTimeout: 10000, socketTimeout: 15000 }).verify(); }
   catch (e) {
     const m = String(e.message || ''), code = String(e.code || ''), rc = +e.responseCode || 0;
     const safe = m.split(pass).join('***').slice(0, 160);
@@ -191,7 +208,7 @@ const toHtml = body => '<div style="font-family:Tahoma,Arial,sans-serif;font-siz
 async function deliver(u, msg) {
   if (!u.mail) throw new Error('no-mail');
   const s = dec(u.mail.secret); const from = { name: u.mail.fromName || u.profile.name, address: u.mail.address };
-  if (u.mail.type === 'smtp') return nodemailer.createTransport(s).sendMail({ from, ...msg });
+  if (u.mail.type === 'smtp') return useRelay(s) ? relaySend(s, { fromName: from.name, ...msg }) : nodemailer.createTransport(s).sendMail({ from, ...msg });
   if (u.mail.type === 'outlook') {
     const t = await msToken({ refresh_token: s.refresh, grant_type: 'refresh_token' }); if (!t.access_token) throw new Error('outlook auth ' + (t.error || ''));
     if (t.refresh_token) { u.mail.secret = enc({ refresh: t.refresh_token }); save(); }

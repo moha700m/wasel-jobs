@@ -1,0 +1,5 @@
+name = "wasel-mailer"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+# vars: RELAY_SECRET_SHA256 (sha256 hex of the relay secret)

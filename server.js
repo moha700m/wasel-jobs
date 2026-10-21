@@ -17,9 +17,25 @@ fs.mkdirSync(path.join(DATA, 'cv'), { recursive: true });
 // ---------- tiny JSON store ----------
 const DBF = path.join(DATA, 'db.json');
 let db = fs.existsSync(DBF) ? JSON.parse(fs.readFileSync(DBF, 'utf8')) : { users: [], jobs: [], apps: [], seq: 1 };
-if (!db.jobs.length) db.jobs = SEED.map(j => ({ id: db.seq++, ...j, added: new Date().toISOString() }));
-const save = () => { fs.writeFileSync(DBF + '.tmp', JSON.stringify(db)); fs.renameSync(DBF + '.tmp', DBF); };
-save();
+// Optional persistent Postgres (DATABASE_URL): whole state as one JSONB row + CV files as bytea.
+const PG = process.env.DATABASE_URL ? new (require('pg').Pool)({ connectionString: process.env.DATABASE_URL, ssl: /render\.com|neon|supabase/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : false }) : null;
+let pgTimer = null;
+const save = () => { fs.writeFileSync(DBF + '.tmp', JSON.stringify(db)); fs.renameSync(DBF + '.tmp', DBF);
+  if (PG) { clearTimeout(pgTimer); pgTimer = setTimeout(() => PG.query('INSERT INTO kv(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', ['db', JSON.stringify(db)]).catch(e => console.error('pg save', e.message)), 300); } };
+const saveFile = (uid, buf, ext) => PG && PG.query('INSERT INTO files(uid,ext,data) VALUES($1,$2,$3) ON CONFLICT(uid) DO UPDATE SET ext=$2,data=$3', [uid, ext, buf]).catch(e => console.error('pg file', e.message));
+const delFile = uid => PG && PG.query('DELETE FROM files WHERE uid=$1', [uid]).catch(() => {});
+function seedJobs() { // merge seed (adds new fields like gender) by email+title
+  for (const j of SEED) { const e = db.jobs.find(x => x.email === j.email && x.title === j.title); if (e) Object.assign(e, j); else db.jobs.push({ id: db.seq++, ...j, added: new Date().toISOString() }); } }
+async function boot() {
+  if (PG) {
+    await PG.query('CREATE TABLE IF NOT EXISTS kv(k text primary key, v jsonb)'); await PG.query('CREATE TABLE IF NOT EXISTS files(uid int primary key, ext text, data bytea)');
+    const r = await PG.query("SELECT v FROM kv WHERE k='db'"); if (r.rows[0]) db = r.rows[0].v;
+    for (const f of (await PG.query('SELECT uid,ext,data FROM files')).rows) fs.writeFileSync(path.join(DATA, 'cv', f.uid + f.ext), f.data);
+    for (const u of db.users) if (u.cv) u.cv.file = path.join(DATA, 'cv', path.basename(u.cv.file));
+    console.log('Postgres storage: loaded', db.users.length, 'users');
+  }
+  seedJobs(); save();
+}
 
 // ---------- crypto helpers (secrets never logged / returned) ----------
 const enc = o => { const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
@@ -47,7 +63,7 @@ app.post('/api/signup', async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(email || '') || (password || '').length < 8) return res.status(400).json({ error: 'invalid' });
   if (db.users.find(u => u.email === email.toLowerCase())) return res.status(409).json({ error: 'exists' });
   const u = { id: db.seq++, email: email.toLowerCase(), hash: await bcrypt.hash(password, 10), created: new Date().toISOString(),
-    profile: { name: name || '', title: '', skills: [], years: 0, city: '', phone: '', nationality: '' },
+    profile: { gender: '', name: name || '', title: '', skills: [], years: 0, city: '', phone: '', nationality: '' },
     prefs: { titles: [], cities: [], salary: '', mode: 'review', dailyCap: 20, lang: 'both', dryRun: false }, consent: new Date().toISOString() };
   db.users.push(u); save(); setCookie(res, u.id); res.json(pub(u));
 });
@@ -65,9 +81,10 @@ const CITIES = { 'riyadh': 'Riyadh', 'الرياض': 'Riyadh', 'jeddah': 'Jeddah
   'khobar': 'Khobar', 'الخبر': 'Khobar', 'makkah': 'Makkah', 'mecca': 'Makkah', 'مكة': 'Makkah', 'madinah': 'Madinah', 'medina': 'Madinah', 'المدينة': 'Madinah',
   'jubail': 'Jubail', 'الجبيل': 'Jubail', 'ahsa': 'Al Ahsa', 'الأحساء': 'Al Ahsa', 'taif': 'Taif', 'الطائف': 'Taif', 'abha': 'Abha', 'أبها': 'Abha', 'tabuk': 'Tabuk', 'تبوك': 'Tabuk', 'qassim': 'Qassim', 'القصيم': 'Qassim', 'buraidah': 'Qassim' };
 const SKILLS = ['javascript','typescript','python','java','react','node','sql','excel','power bi','sap','erp','oracle','autocad','revit','solidworks','primavera','project management','pmp','accounting','ifrs','finance','sales','b2b','marketing','digital marketing','seo','customer service','hr','recruitment','payroll','admin','ms office','communication','leadership','negotiation','hvac','mep','electrical','mechanical','civil','plumbing','hse','safety','fire safety','nursing','nurse','pharmacist','pharmacy','healthcare','logistics','supply chain','procurement','warehouse','cashier','data analysis','network','cybersecurity','it','support','linux','cloud','aws','design','photoshop','figma','arabic','english','محاسبة','مبيعات','تسويق','موارد بشرية','خدمة العملاء','إدارة','برمجة','تمريض','صيدلة','كهرباء','تكييف','سباكة','مشتريات','لوجستيات','سكرتارية'];
+const goodName = n => /^[\p{L}][\p{L}'.-]*(\s+[\p{L}][\p{L}'.-]*){1,4}$/u.test((n || '').trim());
 function extract(text) {
   const lines = text.split(/\n/).map(s => s.trim()).filter(Boolean), low = text.toLowerCase();
-  const name = (lines.find(l => l.length < 40 && !/@|\d|cv|resume|سيرة/i.test(l)) || '').replace(/\s+/g, ' ');
+  const name = (lines.slice(0, 6).find(l => l.length < 40 && goodName(l) && !/@|\d|cv|resume|curriculum|سيرة|ذاتية|summary|profile/i.test(l)) || '').replace(/\s+/g, ' ');
   const title = (lines.slice(1, 8).find(l => l.length < 60 && /engineer|developer|manager|accountant|specialist|technician|officer|analyst|nurse|pharmacist|designer|consultant|supervisor|executive|sales|مهندس|محاسب|أخصائي|اخصائي|مدير|فني|مطور|مصمم|ممرض|مشرف|موظف/i.test(l)) || '');
   const skills = SKILLS.filter(s => new RegExp('(^|[^a-z\u0600-\u06ff])' + s.replace(/[.+]/g, '\\$&') + '($|[^a-z\u0600-\u06ff])', 'i').test(low));
   let years = 0; const m = low.match(/(\d{1,2})\+?\s*(years|yrs|سنوات|سنة|عام)/); if (m) years = +m[1];
@@ -79,14 +96,15 @@ function extract(text) {
 }
 app.post('/api/cv', auth, upload.single('cv'), async (req, res) => {
   const f = req.file; if (!f) return res.status(400).json({ error: 'nofile' });
+  f.originalname = Buffer.from(f.originalname, 'latin1').toString('utf8');
   const ext = path.extname(f.originalname).toLowerCase();
   let text = '';
   try { if (ext === '.pdf') text = (await pdf(f.buffer)).text; else if (ext === '.docx') text = (await mammoth.extractRawText({ buffer: f.buffer })).value; else return res.status(400).json({ error: 'type' }); }
   catch (e) { console.error('cv parse', e.message); return res.status(400).json({ error: 'parse' }); }
-  const file = path.join(DATA, 'cv', `${req.u.id}${ext}`); fs.writeFileSync(file, f.buffer);
+  const file = path.join(DATA, 'cv', `${req.u.id}${ext}`); fs.writeFileSync(file, f.buffer); saveFile(req.u.id, f.buffer, ext);
   const ex = extract(text); const p = req.u.profile;
   req.u.cv = { name: f.originalname, file, uploaded: new Date().toISOString(), chars: text.length };
-  req.u.profile = { ...p, name: p.name || ex.name, title: ex.title || p.title, skills: ex.skills.length ? ex.skills : p.skills, years: ex.years || p.years, city: ex.city || p.city, phone: ex.phone || p.phone };
+  req.u.profile = { ...p, name: p.name || (goodName(ex.name) ? ex.name : ''), title: ex.title || p.title, skills: ex.skills.length ? ex.skills : p.skills, years: ex.years || p.years, city: ex.city || p.city, phone: ex.phone || p.phone };
   if (!req.u.prefs.titles.length && req.u.profile.title) req.u.prefs.titles = [req.u.profile.title];
   if (!req.u.prefs.cities.length && req.u.profile.city) req.u.prefs.cities = [req.u.profile.city];
   save(); res.json({ extracted: ex, me: pub(req.u) });
@@ -117,19 +135,23 @@ app.get('/api/mail/google/start', auth, (req, res) => {
 });
 app.get('/api/mail/google/callback', async (req, res) => {
   const st = unsign(req.query.state || ''); const u = st && db.users.find(x => x.id == st.split(':')[0]);
-  if (!u || !req.query.code) return res.redirect('/app#/settings?mail=error');
+  if (!u || !req.query.code || Date.now() - +st.split(':')[1] > 15 * 60e3) return res.redirect('/app#/settings?mail=error');
   const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ code: req.query.code, client_id: G_ID, client_secret: G_SECRET, redirect_uri: BASE_URL + '/api/mail/google/callback', grant_type: 'authorization_code' }) });
-  const t = await r.json(); if (!t.refresh_token) return res.redirect('/app#/settings?mail=error');
+  const t = await r.json(); if (t.error) console.error('google oauth', t.error); if (!t.refresh_token) return res.redirect('/app#/settings?mail=error');
   const info = JSON.parse(Buffer.from(t.id_token.split('.')[1], 'base64url'));
   u.mail = { type: 'gmail', address: info.email, fromName: u.profile.name, verified: new Date().toISOString(), secret: enc({ refresh: t.refresh_token }) };
   save(); res.redirect('/app#/settings?mail=ok');
 });
 
+const cvName = u => `${(u.profile.name || 'CV').trim().replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '_')}_CV${path.extname(u.cv.file)}`;
+const escH = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const toHtml = body => '<div style="font-family:Tahoma,Arial,sans-serif;font-size:15px;line-height:1.7">' + body.split(/\n{2,}/).map(p => p.trim() === '———' ? '<hr>' : `<p dir="auto" style="unicode-bidi:plaintext;text-align:start;margin:0 0 12px">${escH(p).replace(/\n/g, '<br>')}</p>`).join('') + '</div>';
 async function deliver(u, msg) {
   if (!u.mail) throw new Error('no-mail');
   const s = dec(u.mail.secret); const from = { name: u.mail.fromName || u.profile.name, address: u.mail.address };
   if (u.mail.type === 'smtp') return nodemailer.createTransport(s).sendMail({ from, ...msg });
   const tok = await (await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body: new URLSearchParams({ client_id: G_ID, client_secret: G_SECRET, refresh_token: s.refresh, grant_type: 'refresh_token' }) })).json();
+  if (!tok.access_token) throw new Error('gmail auth ' + (tok.error || ''));
   const raw = (await new MailComposer({ from, ...msg }).compile().build()).toString('base64url');
   const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { Authorization: 'Bearer ' + tok.access_token, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw }) });
   if (!r.ok) throw new Error('gmail ' + r.status);
@@ -149,12 +171,14 @@ function score(u, j) {
   const cities = u.prefs.cities.length ? u.prefs.cities : [p.city];
   if (cities.some(c => c && norm(j.city).includes(norm(c)))) s += 15; else if (/saudi|eastern/i.test(j.city)) s += 8;
   if (j.kind === 'open') s += 3;
+  if (u.profile.gender && j.gender && j.gender.startsWith(u.profile.gender)) s += 5;
   return Math.min(100, s);
 }
 const applied = u => new Set(db.apps.filter(a => a.uid === u.id && a.status !== 'draft').map(a => a.to.toLowerCase()));
+const genderOk = (u, j) => !u.profile.gender || !j.gender || ['any', 'fp', 'mp'].includes(j.gender) || j.gender === u.profile.gender;
 app.get('/api/jobs', auth, (req, res) => {
   const done = applied(req.u);
-  res.json(db.jobs.filter(j => !j.hidden).map(j => ({ ...j, score: score(req.u, j), applied: done.has(j.email.toLowerCase()) })).sort((a, b) => b.score - a.score));
+  res.json(db.jobs.filter(j => !j.hidden && genderOk(req.u, j)).map(j => ({ ...j, score: score(req.u, j), applied: done.has(j.email.toLowerCase()) })).sort((a, b) => b.score - a.score));
 });
 app.post('/api/admin/jobs', (req, res) => {
   if (!ADMIN_TOKEN || req.get('x-admin-token') !== ADMIN_TOKEN) return res.status(403).json({ error: 'forbidden' });
@@ -205,7 +229,7 @@ async function sendApps(u, ids) {
     if (!u.cv) { results.push({ ...a, status: 'no-cv' }); break; }
     const dry = GLOBAL_DRY || u.prefs.dryRun;
     try {
-      if (!dry) await deliver(u, { to: a.to, subject: a.subject, text: a.body, attachments: [{ filename: `${(u.profile.name || 'CV').replace(/\s+/g, '_')}_CV${path.extname(u.cv.file)}`, path: u.cv.file }] });
+      if (!dry) await deliver(u, { to: a.to, subject: a.subject, text: a.body, html: toHtml(a.body), attachments: [{ filename: cvName(u), path: u.cv.file }] });
       a.status = dry ? 'dry-run' : 'sent'; a.sentAt = new Date().toISOString(); if (!dry) done.add(a.to.toLowerCase());
     } catch (e) { a.status = 'failed'; a.error = String(e.message).slice(0, 120); }
     results.push(a); save();
@@ -219,16 +243,16 @@ app.post('/api/apps/send', auth, async (req, res) => { if (!req.u.mail && !(GLOB
 setInterval(async () => {
   for (const u of db.users.filter(u => u.prefs.mode === 'auto' && u.cv && u.mail)) {
     const done = applied(u); const room = u.prefs.dailyCap - sentToday(u); if (room <= 0) continue;
-    const jobs = db.jobs.filter(j => !done.has(j.email.toLowerCase()) && score(u, j) >= 40).slice(0, room);
+    const jobs = db.jobs.filter(j => genderOk(u, j) && !done.has(j.email.toLowerCase()) && score(u, j) >= 40).slice(0, room);
     const ids = jobs.map(j => { const a = { id: db.seq++, uid: u.id, jobId: j.id, to: j.email, ...compose(u, j), status: 'draft', created: new Date().toISOString(), auto: true }; db.apps.push(a); return a.id; });
     if (ids.length) await sendApps(u, ids);
   }
 }, 60 * 60 * 1000);
 
 app.delete('/api/account', auth, (req, res) => {
-  if (req.u.cv) try { fs.unlinkSync(req.u.cv.file); } catch {}
+  if (req.u.cv) try { fs.unlinkSync(req.u.cv.file); } catch {} delFile(req.u.id);
   db.apps = db.apps.filter(a => a.uid !== req.u.id); db.users = db.users.filter(u => u.id !== req.u.id); save(); res.clearCookie('s'); res.json({ ok: 1 });
 });
 app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
 app.get('/healthz', (req, res) => res.send('ok'));
-app.listen(PORT, () => console.log('Wasel on ' + PORT));
+boot().then(() => app.listen(PORT, () => console.log('Wasel on ' + PORT, PG ? '(postgres)' : '(file)')));

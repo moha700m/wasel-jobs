@@ -20,6 +20,6 @@
     "pdf-parse": "^1.1.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   }
 }

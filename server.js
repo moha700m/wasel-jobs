@@ -82,7 +82,7 @@ app.post('/api/cv', auth, upload.single('cv'), async (req, res) => {
   const ext = path.extname(f.originalname).toLowerCase();
   let text = '';
   try { if (ext === '.pdf') text = (await pdf(f.buffer)).text; else if (ext === '.docx') text = (await mammoth.extractRawText({ buffer: f.buffer })).value; else return res.status(400).json({ error: 'type' }); }
-  catch (e) { return res.status(400).json({ error: 'parse' }); }
+  catch (e) { console.error('cv parse', e.message); return res.status(400).json({ error: 'parse' }); }
   const file = path.join(DATA, 'cv', `${req.u.id}${ext}`); fs.writeFileSync(file, f.buffer);
   const ex = extract(text); const p = req.u.profile;
   req.u.cv = { name: f.originalname, file, uploaded: new Date().toISOString(), chars: text.length };

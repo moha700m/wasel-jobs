@@ -262,10 +262,17 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000);
 
+const isAdmin = req => ADMIN_TOKEN && req.get('x-admin-token') === ADMIN_TOKEN;
+app.delete('/api/admin/jobs/:id', (req, res) => { if (!isAdmin(req)) return res.status(403).end(); const n = db.jobs.length; db.jobs = db.jobs.filter(j => j.id != req.params.id); db.apps = db.apps.filter(a => a.jobId != req.params.id); save(); res.json({ removed: n - db.jobs.length }); });
+app.delete('/api/admin/users', (req, res) => { if (!isAdmin(req)) return res.status(403).end(); const pat = String(req.query.match || ''); if (pat.length < 4) return res.status(400).end();
+  const gone = db.users.filter(u => u.email.includes(pat)); for (const u of gone) { try { u.cv && fs.unlinkSync(u.cv.file) } catch {} delFile(u.id); }
+  const ids = new Set(gone.map(u => u.id)); db.users = db.users.filter(u => !ids.has(u.id)); db.apps = db.apps.filter(a => !ids.has(a.uid)); save(); res.json({ removed: gone.length }); });
+app.get('/api/admin/stats', (req, res) => { if (!isAdmin(req)) return res.status(403).end(); res.json({ users: db.users.length, jobs: db.jobs.length, apps: db.apps.length, storage: PG ? 'postgres' : 'file' }); });
 app.delete('/api/account', auth, (req, res) => {
   if (req.u.cv) try { fs.unlinkSync(req.u.cv.file); } catch {} delFile(req.u.id);
   db.apps = db.apps.filter(a => a.uid !== req.u.id); db.users = db.users.filter(u => u.id !== req.u.id); save(); res.clearCookie('s'); res.json({ ok: 1 });
 });
 app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
 app.get('/healthz', (req, res) => res.send('ok'));
+app.use((err, req, res, next) => { if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'too_large' }); console.error('err', err && err.message); res.status(500).json({ error: 'server' }); });
 boot().then(() => app.listen(PORT, () => console.log('Wasel on ' + PORT, PG ? '(postgres)' : '(file)')));

@@ -127,3 +127,15 @@ main.app{padding-bottom:calc(130px + env(safe-area-inset-bottom))!important}
 .apmsg.big{font-size:16px;padding:14px!important;line-height:1.6}
 
 .wzs a.btn.big{border-color:var(--pri);color:var(--pri)}.bigin{background:var(--bg2)!important;color:var(--tx)!important}
+/* v7 wizard: explicit light card, AA contrast */
+.apcard{background:#fff!important;border-color:#16a34a!important;color:#111827!important}
+.apcard .aphd b,.apcard .aphd .muted{color:#1f2937!important}.apcard .badge{background:#166534!important;color:#fff!important}
+.wzs{background:#fff!important;border:1.5px solid #9ca3af!important;color:#111827!important}
+.wzs.done{border-color:#16a34a!important;background:#f0fdf4!important}.wzs.hl{border-color:#b45309!important;box-shadow:0 0 0 4px rgba(180,83,9,.25)!important}
+.wzn{background:#166534!important;color:#fff!important}
+.wzb>b{color:#111111!important}.wzh,.wzh b{color:#374151!important}
+.wzs a.btn.big{background:#15803d!important;border:0!important;color:#fff!important}
+.wzs .btn.p.big{background:#166534!important;color:#fff!important;box-shadow:none}
+.wzs .bigin{background:#fff!important;color:#111827!important;border:1.5px solid #4b5563!important;-webkit-text-fill-color:#111827}
+.wzs .bigin::placeholder{color:#6b7280!important;-webkit-text-fill-color:#6b7280;opacity:1}
+.apmsg.ok{background:#dcfce7!important;color:#14532d!important}.apmsg.bad{background:#fef2f2!important;color:#7f1d1d!important}

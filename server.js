@@ -74,12 +74,12 @@ const setCookie = (res, id) => res.cookie('s', sign(String(id)), { httpOnly: tru
 
 // ---------- auth ----------
 app.post('/api/signup', async (req, res) => {
-  const { email, password, name } = req.body || {};
+  const { email, password, name, gender } = req.body || {};
   if (!/^\S+@\S+\.\S+$/.test(email || '') || (password || '').length < 8) return res.status(400).json({ error: 'invalid' });
   if (db.users.find(u => u.email === email.toLowerCase())) return res.status(409).json({ error: 'exists' });
   const u = { id: db.seq++, email: email.toLowerCase(), hash: await bcrypt.hash(password, 10), created: new Date().toISOString(),
-    profile: { gender: '', name: name || '', title: '', skills: [], years: 0, city: '', phone: '', nationality: '' },
-    prefs: { titles: [], cities: [], salary: '', mode: 'review', dailyCap: 20, lang: 'both', dryRun: false }, consent: new Date().toISOString() };
+    profile: { gender: ['m','f'].includes(gender) ? gender : '', name: name || '', title: '', skills: [], years: 0, city: '', phone: '', nationality: '' },
+    prefs: { titles: [], cities: [], salary: '', mode: 'review', dailyCap: 20, lang: 'both', dryRun: true }, consent: new Date().toISOString() };
   db.users.push(u); save(); setCookie(res, u.id); res.json(pub(u));
 });
 app.post('/api/login', async (req, res) => {
@@ -127,7 +127,7 @@ app.post('/api/cv', auth, upload.single('cv'), async (req, res) => {
 app.put('/api/profile', auth, (req, res) => {
   const { profile, prefs } = req.body || {};
   if (profile) req.u.profile = { ...req.u.profile, ...profile };
-  if (prefs) { req.u.prefs = { ...req.u.prefs, ...prefs }; req.u.prefs.dailyCap = Math.max(1, Math.min(20, +req.u.prefs.dailyCap || 20)); }
+  if (prefs) { req.u.prefs = { ...req.u.prefs, ...prefs }; req.u.prefs.dailyCap = Math.max(1, Math.min(20, +req.u.prefs.dailyCap || 20)); if (!req.u.mail) req.u.prefs.dryRun = true; }
   save(); res.json(pub(req.u));
 });
 

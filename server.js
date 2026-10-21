@@ -137,7 +137,7 @@ app.post('/api/cv', auth, upload.single('cv'), async (req, res) => {
 app.put('/api/profile', auth, (req, res) => {
   const { profile, prefs } = req.body || {};
   if (profile) req.u.profile = { ...req.u.profile, ...profile };
-  if (prefs) { req.u.prefs = { ...req.u.prefs, ...prefs }; req.u.prefs.dailyCap = Math.max(1, Math.min(20, +req.u.prefs.dailyCap || 20)); if (!req.u.mail) req.u.prefs.dryRun = true; }
+  if (prefs) { req.u.prefs = { ...req.u.prefs, ...prefs }; req.u.prefs.dailyCap = Math.max(1, Math.min(50, +req.u.prefs.dailyCap || 20)); if (!req.u.mail) req.u.prefs.dryRun = true; }
   save(); res.json(pub(req.u));
 });
 
@@ -293,12 +293,12 @@ app.put('/api/apps/:id', auth, (req, res) => {
 });
 app.delete('/api/apps/:id', auth, (req, res) => { db.apps = db.apps.filter(x => !(x.id == req.params.id && x.uid === req.u.id && x.status === 'draft')); save(); res.json({ ok: 1 }); });
 
-async function sendApps(u, ids) {
+async function sendApps(u, ids, opt = {}) {
   const results = []; const done = applied(u);
   for (const id of ids) {
     const a = db.apps.find(x => x.id == id && x.uid === u.id && x.status === 'draft'); if (!a) continue;
     if (done.has(a.to.toLowerCase())) { a.status = 'skipped-duplicate'; results.push(a); continue; }
-    if (sentToday(u) >= u.prefs.dailyCap) { results.push({ ...a, status: 'cap-reached' }); break; }
+    if (sentToday(u) >= Math.min(50, +u.prefs.dailyCap || 20)) { results.push({ ...a, status: 'cap-reached' }); break; }
     if (!u.cv) { results.push({ ...a, status: 'no-cv' }); break; }
     const dry = GLOBAL_DRY || u.prefs.dryRun;
     try {
@@ -306,11 +306,64 @@ async function sendApps(u, ids) {
       a.status = dry ? 'dry-run' : 'sent'; a.sentAt = new Date().toISOString(); if (!dry) done.add(a.to.toLowerCase());
     } catch (e) { a.status = 'failed'; a.error = String(e.message).slice(0, 120); }
     results.push(a); save();
-    await new Promise(r => setTimeout(r, dry ? 50 : 4000 + Math.random() * 4000));
+    if (!opt.noDelay) await new Promise(r => setTimeout(r, dry ? 50 : 4000 + Math.random() * 4000));
   }
   return results;
 }
 app.post('/api/apps/send', auth, async (req, res) => { if (!req.u.mail && !(GLOBAL_DRY || req.u.prefs.dryRun)) return res.status(400).json({ error: 'nomail' }); res.json(await sendApps(req.u, req.body.ids || [])); });
+
+
+// ---------- bulk apply: server-side queue ----------
+const BATCH_MAX = 25, DAY_MAX = 50;
+const dayLimit = u => Math.min(DAY_MAX, Math.max(1, +u.prefs.dailyCap || 20));
+const batchView = b => ({ ...b, items: b.items.map(i => { const j = db.jobs.find(x => x.id === i.jobId) || {}; return { ...i, company: j.company, title: j.title, title_ar: j.title_ar, city: j.city }; }) });
+app.post('/api/batch', auth, (req, res) => {
+  const u = req.u; db.batches = db.batches || [];
+  if (db.batches.some(b => b.uid === u.id && b.state === 'running')) return res.status(409).json({ error: 'running' });
+  const dry = !!(GLOBAL_DRY || u.prefs.dryRun);
+  if (!u.mail && !dry) return res.status(400).json({ error: 'nomail' });
+  if (!u.cv) return res.status(400).json({ error: 'nocv' });
+  const room = dayLimit(u) - sentToday(u); if (room <= 0) return res.status(400).json({ error: 'cap', limit: dayLimit(u) });
+  const done = applied(u); const ids = [...new Set((req.body.jobIds || []).map(Number))];
+  if (ids.length > BATCH_MAX) return res.status(400).json({ error: 'batchmax', max: BATCH_MAX });
+  const items = []; let skipped = 0;
+  for (const id of ids) {
+    const j = db.jobs.find(x => x.id === id); if (!j || !genderOk(u, j)) continue;
+    if (done.has(j.email.toLowerCase())) { skipped++; continue; }
+    if (items.length >= room) break;
+    db.apps = db.apps.filter(a => !(a.uid === u.id && a.status === 'draft' && a.jobId === j.id));
+    const a = { id: db.seq++, uid: u.id, jobId: j.id, to: j.email, ...compose(u, j), status: 'draft', created: new Date().toISOString(), bulk: true };
+    db.apps.push(a); done.add(j.email.toLowerCase()); items.push({ appId: a.id, jobId: j.id, status: 'queued' });
+  }
+  if (!items.length) return res.status(400).json({ error: 'nothing', skipped });
+  const b = { id: db.seq++, uid: u.id, created: new Date().toISOString(), state: 'running', dry, skipped, nextAt: Date.now(), items };
+  db.batches.push(b); save(); res.json(batchView(b));
+});
+app.get('/api/batch/current', auth, (req, res) => { const b = (db.batches || []).filter(b => b.uid === req.u.id).pop(); res.json(b ? batchView(b) : null); });
+app.post('/api/batch/:id/cancel', auth, (req, res) => {
+  const b = (db.batches || []).find(b => b.id == req.params.id && b.uid === req.u.id); if (!b) return res.status(404).end();
+  b.items.filter(i => i.status === 'queued').forEach(i => { i.status = 'cancelled'; db.apps = db.apps.filter(a => a.id !== i.appId); });
+  b.state = 'cancelled'; save(); res.json(batchView(b));
+});
+let batchBusy = false;
+async function batchTick() {
+  if (batchBusy) return; batchBusy = true;
+  try {
+    for (const b of (db.batches || []).filter(b => b.state === 'running' && b.nextAt <= Date.now())) {
+      const u = db.users.find(x => x.id === b.uid); const it = b.items.find(i => i.status === 'sending') || b.items.find(i => i.status === 'queued');
+      if (!u || !it) { b.state = 'done'; save(); continue; }
+      it.status = 'sending'; save();
+      const dry = !!(GLOBAL_DRY || u.prefs.dryRun);
+      if (sentToday(u) >= dayLimit(u)) { b.items.filter(i => ['queued', 'sending'].includes(i.status)).forEach(i => i.status = 'cap-reached'); b.state = 'done'; save(); continue; }
+      const [r] = await sendApps(u, [it.appId], { noDelay: true });
+      it.status = r ? r.status : 'failed'; if (r && r.error) it.error = r.error; it.at = new Date().toISOString();
+      b.nextAt = Date.now() + (dry ? 1500 + Math.random() * 1500 : 20000 + Math.random() * 20000);
+      if (!b.items.some(i => i.status === 'queued')) b.state = 'done';
+      save();
+    }
+  } catch (e) { console.warn('[batch]', e.message); } finally { batchBusy = false; }
+}
+setInterval(batchTick, 1000);
 
 // auto mode: hourly, matches >= 40, respecting daily cap
 async function runAuto() {

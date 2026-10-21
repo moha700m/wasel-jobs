@@ -11,7 +11,7 @@ async function route(){const h=location.hash.slice(2).split('?')[0]||'jobs';
  if(!ME&&!['login','signup'].includes(h))return location.hash='#/signup';
  if(ME&&['login','signup'].includes(h))return location.hash='#/jobs';
  if(ME&&(!ME.cv||!ME.profile.gender)&&h!=='onboard')return location.hash='#/onboard';
- ({login:()=>authV('login'),signup:()=>authV('signup'),onboard,jobs,apps,profile,settings}[h]||jobs)();window.scrollTo(0,0)}
+ ({login:()=>authV('login'),signup:()=>authV('signup'),onboard,jobs,apps,batch,profile,settings}[h]||jobs)();window.scrollTo(0,0)}
 window.onhashchange=route;window.onLang=route;
 api('/api/config').then(c=>{CFG=c;route()});
 let SG=null;
@@ -46,7 +46,7 @@ function profForm(){const p=ME.profile,q=ME.prefs;return dryBox()+`<div class="g
  <label>${t('skills')}</label><input id="ps" value="${esc(csv(p.skills))}" dir="auto" oninput="this.nextElementSibling.innerHTML=skChips(arr(this.value))"><div class="skc">${skChips(p.skills||[])}</div>
  <div class="grid g2"><div><label>${t('ptitles')}</label><input id="qt" value="${esc(csv(q.titles))}" dir="auto"></div><div><label>${t('pcities')}</label><input id="qc" value="${esc(csv(q.cities))}" placeholder="Riyadh, Jeddah"></div>
  <div><label>${t('salary')}</label><input id="qs" value="${esc(q.salary)}" inputmode="numeric"></div><div><label>${t('elang')}</label><select id="ql"><option value="both">${t('both')}</option><option value="ar">العربية</option><option value="en">English</option></select></div>
- <div><label>${t('mode')}</label><select id="qm"><option value="review">${t('m_review')}</option><option value="auto">${t('m_auto')}</option></select></div><div><label>${t('cap')}</label><input id="qcap" type="number" min="1" max="20" value="${q.dailyCap}"></div></div>`}
+ <div><label>${t('mode')}</label><select id="qm"><option value="review">${t('m_review')}</option><option value="auto">${t('m_auto')}</option></select></div><div><label>${t('cap')}</label><input id="qcap" type="number" min="1" max="50" value="${q.dailyCap}"></div></div>`}
 async function saveProf(quiet){ME=await api('/api/profile',{method:'PUT',body:{profile:{name:$('#pn').value.trim(),title:$('#pt').value.trim(),years:+$('#py').value,city:$('#pc').value.trim(),phone:$('#pp').value.trim(),nationality:$('#pna').value.trim(),skills:arr($('#ps').value)},
  prefs:{titles:arr($('#qt').value),cities:arr($('#qc').value),salary:$('#qs').value,lang:$('#ql').value,mode:$('#qm').value,dailyCap:+$('#qcap').value,dryRun:ME.mail?$('#qd').checked:true}}});quiet||toast(t('saved'))}
 function setSel(){if($('#ql')){$('#ql').value=ME.prefs.lang;$('#qm').value=ME.prefs.mode}}
@@ -111,10 +111,10 @@ function groupByType(list){
 function renderJobList(){
   const list=filterJobs(JOBS_CACHE,JOB_FILTER);
   const groups=groupByType(list);
-  const body=groups.length?groups.map(g=>`<div class="type-block"><div class="type-h"><span>${esc(LANG==='ar'?g.type:g.type_en)}</span><span class="muted">${g.jobs.length}</span></div><div class="grid">${g.jobs.map(jobCard).join('')}</div></div>`).join(''):`<div class="card empty"><p>${LANG==='ar'?'ما فيه وظائف بهالقسم':'No jobs in this section'}</p></div>`;
+  const body=groups.length?groups.map(g=>`<div class="type-block"><div class="type-h"><span>${esc(LANG==='ar'?g.type:g.type_en)}</span><span class="muted">${g.jobs.length}</span><span class="sp"></span><button type="button" class="btn sm catall" data-cat="${esc(g.type)}">${LANG==='ar'?'حدد الكل':'Select all'}</button></div><div class="grid">${g.jobs.map(jobCard).join('')}</div></div>`).join(''):`<div class="card empty"><p>${LANG==='ar'?'ما فيه وظائف بهالقسم':'No jobs in this section'}</p></div>`;
   $('#joblist').innerHTML=body;
   $('#jcount').textContent=list.length;
-  const upd=()=>$('#cnt').textContent=$$('.pick:checked').length;$$('.pick').forEach(c=>c.onchange=upd);upd();
+  $$('.catall').forEach(b=>b.onclick=e=>{e.preventDefault();const cs=$$('.type-block').find(x=>x.contains(b)).querySelectorAll('.pick');const all=[...cs].every(c=>c.checked);cs.forEach(c=>c.checked=!all);updBar()});$$('.pick').forEach(c=>c.onchange=updBar);updBar();
 }
 async function jobs(){V().innerHTML=tabs('jobs')+'<div class="grid">'+'<div class="skel"></div>'.repeat(4)+'</div>';JOBS_CACHE=await api('/api/jobs');const js=JOBS_CACHE;const good=js.filter(j=>j.score>=40&&!j.applied).length;
  const first=(ME.profile.name||'').split(' ')[0];
@@ -129,12 +129,12 @@ async function jobs(){V().innerHTML=tabs('jobs')+'<div class="grid">'+'<div clas
  V().innerHTML=tabs('jobs')+`<div class="fade"><div class="hello">${t('hi')} ${esc(first)} 👋</div><p>${t('hi_s')}</p>
  <div class="kpis"><div><b>${good}</b><span>${t('k_m')}</span></div><div><b>${ME.sentToday}<small class="muted">/${ME.prefs.dailyCap}</small></b><span>${t('k_s')}</span></div><div><b>${js.filter(j=>j.applied).length}</b><span>${t('k_t')}</span></div></div>
  <div class="segbar">${tabsHtml}</div>
- <div class="row" style="margin:6px 0 14px;position:sticky;top:72px;z-index:5;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(10px);padding:8px 0"><span class="muted"><span id="jcount">${js.length}</span> ${LANG==='ar'?'وظيفة':'jobs'} · ${t('by_type')}</span><span class="sp"></span><button class="btn sm" id="best">${ic('spark',16)} ${t('selall')}</button><button class="btn sm p" id="dr">${t('apply')} (<span id="cnt">0</span>)</button></div>
- <div id="joblist"></div></div>`;
- renderJobList();
+ <div class="row" style="margin:6px 0 14px;position:sticky;top:72px;z-index:5;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(10px);padding:8px 0"><span class="muted"><span id="jcount">${js.length}</span> ${LANG==='ar'?'وظيفة':'jobs'} · ${t('by_type')}</span><span class="sp"></span><button class="btn sm" id="best">${ic('spark',16)} ${t('selall')}</button></div>
+ <div id="joblist"></div></div><div class="bulkbar" id="bb" hidden><button class="btn sm" id="bclr">${AR?'إلغاء التحديد':'Clear'}</button><button class="btn big" id="bgo">${AR?'قدّم على':'Apply to'} (<span id="cnt">0</span>) ${AR?'وظيفة':'jobs'}</button></div>`;
+ renderJobList();$('#bclr').onclick=()=>{$$('.pick').forEach(c=>c.checked=false);updBar()};$('#bgo').onclick=bulkSheet;
  $$('.seg').forEach(b=>b.onclick=()=>{$$('.seg').forEach(x=>x.classList.remove('on'));b.classList.add('on');JOB_FILTER=b.dataset.f;renderJobList()});
- $('#best').onclick=()=>{$$('.pick').forEach(c=>{const j=JOBS_CACHE.find(x=>x.id==c.value);c.checked=j&&j.score>=40});$('#cnt').textContent=$$('.pick:checked').length};
- $('#dr').onclick=async()=>{const ids=$$('.pick:checked').map(c=>+c.value);if(!ids.length)return toast(LANG==='ar'?'اختر وظيفة وحدة على الأقل':'Pick at least one job');await api('/api/apps/draft',{method:'POST',body:{jobIds:ids}});location.hash='#/apps'};}
+ $('#best').onclick=()=>{let n=0;$$('.pick').forEach(c=>{const j=JOBS_CACHE.find(x=>x.id==c.value);c.checked=!!(j&&j.score>=40&&n<25)&&!!++n});updBar()};
+}
 const paras=b=>b.split(/\n{2,}/).map(p=>p.trim()==='———'?'<hr>':`<p dir="auto">${esc(p)}</p>`).join('');
 async function apps(){const as=await api('/api/apps');const dr=as.filter(a=>a.status==='draft'),hist=as.filter(a=>a.status!=='draft');
  V().innerHTML=tabs('apps')+'<div class="fade">'+(!as.length?`<div class="card empty"><div class="ico">${ic('inbox',28)}</div><p>${t('empty')}</p><a class="btn p" href="#/jobs" style="margin-top:14px">${t('t_jobs')}</a></div>`:'')+
@@ -156,3 +156,33 @@ function settings(){V().innerHTML=tabs('settings')+`<div class="fade"><div class
  bindMail();$$('.gpick button').forEach(b=>b.onclick=async()=>{setGender(b.dataset.g);ME=await api('/api/profile',{method:'PUT',body:{profile:{gender:b.dataset.g}}});toast(t('saved'));settings()});
  $('#da').onclick=async()=>{if(confirm(t('sure'))){await api('/api/account',{method:'DELETE'});localStorage.removeItem('g');location.href='/'}};}
 async function logout(){await api('/api/logout',{method:'POST'});ME=null;setGender('');location.hash='#/login'}
+
+const BMAX=25;
+function updBar(){const n=$$('.pick:checked').length;if(!$('#bb'))return;$('#bb').hidden=!n;$('#cnt').textContent=n;$('#bb').classList.toggle('over',n>BMAX)}
+const stTxt=s=>({queued:AR?'بالانتظار':'Queued',sending:AR?'يرسل الحين…':'Sending…',sent:AR?'انرسل ✓':'Sent ✓','dry-run':AR?'تجربة ✓':'Simulated ✓',failed:AR?'فشل ✗':'Failed ✗','skipped-duplicate':AR?'مقدّم عليها':'Already applied','cap-reached':AR?'وصلت الحد اليومي':'Daily limit',cancelled:AR?'ملغي':'Cancelled'}[s]||s);
+function bulkSheet(){const ids=$$('.pick:checked').map(c=>+c.value);if(!ids.length)return;
+ if(ids.length>BMAX)return toast(AR?`الحد ${BMAX} وظيفة بالدفعة الوحدة، شيل ${ids.length-BMAX}`:`Max ${BMAX} per batch`);
+ const js=ids.map(i=>JOBS_CACHE.find(j=>j.id===i)).filter(Boolean),dry=ME.prefs.dryRun||CFG.dryRun;
+ const left=Math.max(0,50-ME.sentToday);
+ const d=document.createElement('div');d.className='sheetbg';d.innerHTML=`<div class="sheet" role="dialog"><div class="grab"></div><h2>${AR?`بتقدّم على ${js.length} وظيفة`:`Apply to ${js.length} jobs`}</h2>
+ ${dry?`<div class="sheetnote dry">🧪 ${AR?'وضع التجربة شغال: ما راح ينرسل شي للشركات، بس نجرب.':'Test mode: nothing is really sent.'}</div>`:`<div class="sheetnote">${AR?`بتنرسل من <b dir="ltr">${esc(ME.mail?.address||'')}</b> وحدة وحدة، بين كل وحدة ٢٠-٤٠ ثانية عشان ما ينحسب إيميلك سبام. تقدر تقفل الصفحة وبيكمّل.`:'Sent one by one from your email, 20-40s apart. You can close the page.'}</div>`}
+ <p class="sheetsub">${AR?`باقي لك اليوم ${left} من ٥٠`:`${left} of 50 left today`}</p>
+ <ol class="sheetlist">${js.map(j=>`<li><b dir="auto">${esc(AR?j.title_ar:j.title)}</b><span>${esc(j.company)} · ${esc(j.city)}</span></li>`).join('')}</ol>
+ <button class="btn big full" id="sgo">${AR?'أكّد وابدأ التقديم':'Confirm & start'}</button><button class="btn full" id="sno" style="margin-top:8px">${AR?'رجوع':'Back'}</button></div>`;
+ document.body.appendChild(d);d.onclick=e=>{if(e.target===d)d.remove()};$('#sno').onclick=()=>d.remove();
+ $('#sgo').onclick=async()=>{$('#sgo').disabled=true;$('#sgo').textContent='…';try{await api('/api/batch',{method:'POST',body:{jobIds:ids}});d.remove();location.hash='#/batch'}catch(e){$('#sgo').disabled=false;$('#sgo').textContent=AR?'أكّد وابدأ التقديم':'Confirm & start';
+  toast({nomail:AR?'اربط إيميلك أول من الإعدادات':'Connect your email first',running:AR?'عندك دفعة شغالة، استنها تخلص':'A batch is already running',cap:AR?'وصلت حد اليوم (٥٠)، كمّل بكرة':'Daily limit reached',nothing:AR?'كلها مقدّم عليها من قبل':'All already applied',batchmax:AR?'الحد ٢٥ بالدفعة':'Max 25',nocv:AR?'ارفع سيرتك أول':'Upload your CV'}[e.error]||'Error')}}}
+let BT=null;
+async function batch(){clearTimeout(BT);const b=await api('/api/batch/current');
+ if(!b){V().innerHTML=tabs('apps')+`<div class="card empty"><p>${AR?'ما عندك دفعة تقديم':'No batch yet'}</p><a class="btn p" href="#/jobs">${t('t_jobs')}</a></div>`;return}
+ const n=b.items.length,ok=b.items.filter(i=>['sent','dry-run'].includes(i.status)).length,bad=b.items.filter(i=>['failed','cap-reached'].includes(i.status)).length,doneN=b.items.filter(i=>!['queued','sending'].includes(i.status)).length,run=b.state==='running';
+ V().innerHTML=tabs('apps')+`<div class="fade bprog"><h2>${run?(AR?'جاري التقديم…':'Applying…'):(AR?'خلصت الدفعة ✓':'Batch done ✓')}</h2>
+ ${b.dry?`<div class="sheetnote dry">🧪 ${AR?'وضع التجربة: ما انرسل شي فعلياً':'Test mode: simulated only'}</div>`:''}
+ <div class="pbar"><i style="width:${Math.round(doneN/n*100)}%"></i></div>
+ <div class="pnums"><span class="g">${AR?'انرسل':'Sent'} ${ok}</span><span class="r">${AR?'فشل':'Failed'} ${bad}</span><span>${doneN} / ${n}</span></div>
+ ${b.skipped?`<p class="sheetsub">${AR?`تجاوزنا ${b.skipped} وظيفة مقدّم عليها من قبل`:`Skipped ${b.skipped} already applied`}</p>`:''}
+ ${run?`<p class="sheetsub">${AR?'تقدر تقفل الصفحة، التقديم يكمّل لحاله.':'You can close this page; it keeps going.'}</p>`:''}
+ <div class="blist">${b.items.map(i=>`<div class="bi ${i.status}"><div><b dir="auto">${esc(AR?i.title_ar:i.title)}</b><span>${esc(i.company)}</span>${i.error?`<span class="er">${esc(i.error)}</span>`:''}</div><em>${stTxt(i.status)}</em></div>`).join('')}</div>
+ ${run?`<button class="btn full" id="bcan" style="margin-top:14px">${AR?'وقّف الباقي':'Stop the rest'}</button>`:`<a class="btn big full" href="#/apps" style="margin-top:14px">${AR?'سجل الطلبات':'Applications history'}</a>`}</div>`;
+ if($('#bcan'))$('#bcan').onclick=async()=>{await api('/api/batch/'+b.id+'/cancel',{method:'POST'});batch()};
+ if(run)BT=setTimeout(()=>{if(location.hash.startsWith('#/batch'))batch()},2500)}

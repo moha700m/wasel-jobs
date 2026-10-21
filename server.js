@@ -133,11 +133,23 @@ app.put('/api/profile', auth, (req, res) => {
 
 // ---------- email connection ----------
 app.post('/api/mail/smtp', auth, async (req, res) => {
-  const { host, port, user, pass, fromName } = req.body || {};
-  if (!host || !user || !pass) return res.status(400).json({ error: 'missing' });
-  const cfg = { host, port: +port || 465, secure: (+port || 465) === 465, auth: { user, pass } };
-  try { await nodemailer.createTransport({ ...cfg, connectionTimeout: 10000 }).verify(); }
-  catch (e) { const m = String(e.message); if (/timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH/i.test(m) && !/127\.0\.0\.1|localhost/.test(host)) return res.status(400).json({ error: 'smtp_blocked', detail: 'SMTP port unreachable from server' }); return res.status(400).json({ error: 'verify', detail: m.replace(pass, '***').slice(0, 160) }); }
+  let { host, port, user, pass, fromName } = req.body || {};
+  user = String(user || '').trim().toLowerCase(); pass = String(pass || '').replace(/\s+/g, '');
+  host = String(host || 'smtp.gmail.com').trim(); port = +port || 465;
+  if (!user || !pass) return res.status(400).json({ error: 'missing' });
+  if (/gmail\.com$/.test(user) && !/^[a-z]{16}$/i.test(pass)) return res.status(400).json({ error: 'badformat' });
+  const cfg = { host, port, secure: port === 465, auth: { user, pass } };
+  try { await nodemailer.createTransport({ ...cfg, connectionTimeout: 12000, greetingTimeout: 10000, socketTimeout: 15000 }).verify(); }
+  catch (e) {
+    const m = String(e.message || ''), code = String(e.code || ''), rc = +e.responseCode || 0;
+    const safe = m.split(pass).join('***').slice(0, 160);
+    let error = 'verify';
+    if (/ETIMEDOUT|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|ESOCKET|ECONNECTION|timeout/i.test(code + ' ' + m) && !/127\.0\.0\.1|localhost/.test(host)) error = 'smtp_blocked';
+    else if (/Application-specific password required|InvalidSecondFactor|534/i.test(m) || rc === 534) error = 'need_2fa';
+    else if (code === 'EAUTH' || rc === 535 || /BadCredentials|Username and Password not accepted/i.test(m)) error = 'badpass';
+    console.warn('[smtp-verify]', error, code, rc, safe);
+    return res.status(400).json({ error, detail: safe });
+  }
   req.u.mail = { type: 'smtp', address: user, fromName: fromName || req.u.profile.name, verified: new Date().toISOString(), secret: enc(cfg) };
   save(); res.json(pub(req.u));
 });

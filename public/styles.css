@@ -111,3 +111,9 @@ main.app{padding-bottom:calc(130px + env(safe-area-inset-bottom))!important}
 .tgl .sw{width:46px;height:26px;border-radius:20px;background:var(--line2);position:relative;flex:none;transition:.2s}.tgl .sw:after{content:'';position:absolute;top:3px;inset-inline-start:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s}
 .tgl input:checked+.sw{background:var(--gold)}.tgl input:checked+.sw:after{inset-inline-start:23px}.tgl input:disabled+.sw{opacity:.75}
 .badge-dry{display:inline-block;margin:10px 0 4px;padding:5px 12px;border-radius:20px;background:rgba(212,175,55,.15);color:var(--gold);font-weight:700;font-size:14px;border:1px solid var(--gold)}
+.apcard{border:2px solid var(--p,#0f766e);border-radius:16px;padding:16px;background:rgba(15,118,110,.04)}
+.aphd{display:flex;gap:10px;align-items:center;margin-bottom:8px}.aphd>div{flex:1}
+.badge{background:var(--p,#0f766e);color:#fff;font-size:12px;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.apsteps{padding-inline-start:20px;margin:8px 0 12px;line-height:1.9;font-size:14.5px}.apsteps a{word-break:break-all}
+.apmsg{margin:10px 0;font-size:14px;border-radius:10px}.apmsg.ok{padding:10px;background:#dcfce7;color:#166534}.apmsg.bad{padding:10px;background:#fef2f2;color:#991b1b}
+.altrow{margin-top:14px;opacity:.75}.btn.sec{font-size:14px}.soon{font-size:11.5px;background:#e5e7eb;color:#374151;padding:2px 8px;border-radius:99px;margin-inline-start:6px}

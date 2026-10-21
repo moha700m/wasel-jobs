@@ -208,10 +208,13 @@ function compose(u, j) {
     : `${j.kind === 'open' ? (p.title || j.title) : j.title} – ${name}${p.city ? ' – ' + p.city : ''}`;
   const sk = (p.skills || []).slice(0, 5).join('، '), skEn = (p.skills || []).slice(0, 5).join(', ');
   const yrs = p.years ? `${p.years} سنوات خبرة` : 'خبرة عملية', yrsEn = p.years ? `${p.years} years of experience` : 'hands-on experience';
+  const CITY_AR = { Riyadh: 'الرياض', Jeddah: 'جدة', Dammam: 'الدمام', Khobar: 'الخبر', Makkah: 'مكة', Madinah: 'المدينة المنورة', Jubail: 'الجبيل', 'Al Ahsa': 'الأحساء', Taif: 'الطائف', Abha: 'أبها', Tabuk: 'تبوك', Qassim: 'القصيم', 'Saudi Arabia': 'المملكة', 'Eastern Province': 'المنطقة الشرقية' };
+  const hasAr = s => /[\u0600-\u06FF]/.test(s || '');
+  const cityAr = CITY_AR[j.city] || j.city, jobEn = j.title.replace(/\s*\([^)]*\)/g, '').trim(), titleEn = hasAr(p.title) ? jobEn : p.title, titleAr = hasAr(p.title) ? p.title : '';
   const iso = x => '\u2068' + x + '\u2069'; const ph = p.phone ? iso(p.phone) : '';
   const nat = p.nationality ? ` (${p.nationality})` : '';
-  const ar = `السلام عليكم ورحمة الله،\n\nأتقدم لكم بطلب ${j.kind === 'open' ? 'الانضمام إلى فريق ' + j.company : 'وظيفة «' + j.title_ar + '»'}${j.city ? ' في ' + j.city : ''}. لدي ${yrs}${p.title ? ' كـ' + p.title : ''}${sk ? '، ومن أبرز مهاراتي: ' + sk : ''}.\n\nمرفق سيرتي الذاتية، ويسعدني التواصل معكم في أي وقت${ph ? ' على الرقم ' + ph : ''}.\n\nمع خالص التحية،\n${name}${nat}`;
-  const en = `Dear Hiring Team,\n\nI would like to apply for ${j.kind === 'open' ? 'a suitable role at ' + j.company : 'the ' + j.title + ' position'}${j.city ? ' in ' + j.city : ''}. I bring ${yrsEn}${p.title ? ' as a ' + p.title : ''}${skEn ? ', with strengths in ' + skEn : ''}.\n\nPlease find my CV attached. I am available for an interview at your convenience${ph ? ' on ' + ph : ''}.\n\nBest regards,\n${iso(name)}`;
+  const ar = `السلام عليكم ورحمة الله،\n\nأتقدم لكم بطلب ${j.kind === 'open' ? 'الانضمام إلى فريق ' + j.company : 'وظيفة «' + j.title_ar + '»'}${j.city ? ' في ' + cityAr : ''}. لدي ${yrs}${titleAr ? ' كـ' + titleAr : (p.title ? ' في مجال ' + p.title : '')}${sk ? '، ومن أبرز مهاراتي: ' + sk : ''}.\n\nمرفق سيرتي الذاتية، ويسعدني التواصل معكم في أي وقت${ph ? ' على الرقم ' + ph : ''}.\n\nمع خالص التحية،\n${name}${nat}`;
+  const en = `Dear Hiring Team,\n\nI would like to apply for ${j.kind === 'open' ? 'a suitable role at ' + j.company : 'the ' + jobEn + ' position'}${j.city ? ' in ' + j.city : ''}. I bring ${yrsEn}${titleEn ? ' as a ' + titleEn : ''}${skEn ? ', with strengths in ' + skEn : ''}.\n\nPlease find my CV attached. I am available for an interview at your convenience${ph ? ' on ' + ph : ''}.\n\nBest regards,\n${iso(name)}`;
   return { subject: sub, body: lang === 'ar' ? ar : lang === 'en' ? en.replace(/\n[^\n]*$/, '\n' + iso(name)) : ar + '\n\n———\n\n' + en };
 }
 const sentToday = u => { const d = new Date().toISOString().slice(0, 10); return db.apps.filter(a => a.uid === u.id && ['sent', 'dry-run'].includes(a.status) && (a.sentAt || '').startsWith(d)).length; };

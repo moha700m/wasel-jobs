@@ -162,15 +162,15 @@ function updBar(){const n=$$('.pick:checked').length;if(!$('#bb'))return;$('#bb'
 const stTxt=s=>({queued:AR?'بالانتظار':'Queued',sending:AR?'يرسل الحين…':'Sending…',sent:AR?'انرسل ✓':'Sent ✓','dry-run':AR?'تجربة ✓':'Simulated ✓',failed:AR?'فشل ✗':'Failed ✗','skipped-duplicate':AR?'مقدّم عليها':'Already applied','cap-reached':AR?'وصلت الحد اليومي':'Daily limit',cancelled:AR?'ملغي':'Cancelled'}[s]||s);
 function bulkSheet(){const ids=$$('.pick:checked').map(c=>+c.value);if(!ids.length)return;
  if(ids.length>BMAX)return toast(AR?`الحد ${BMAX} وظيفة بالدفعة الوحدة، شيل ${ids.length-BMAX}`:`Max ${BMAX} per batch`);
- const js=ids.map(i=>JOBS_CACHE.find(j=>j.id===i)).filter(Boolean),dry=ME.prefs.dryRun||CFG.dryRun;
+ const seen=new Set(),all=ids.map(i=>JOBS_CACHE.find(j=>j.id===i)).filter(Boolean),js=all.filter(j=>{const e=(j.email||'').toLowerCase();if(seen.has(e))return false;seen.add(e);return true}),dup=all.length-js.length,dry=ME.prefs.dryRun||CFG.dryRun;
  const left=Math.max(0,50-ME.sentToday);
  const d=document.createElement('div');d.className='sheetbg';d.innerHTML=`<div class="sheet" role="dialog"><div class="grab"></div><h2>${AR?`بتقدّم على ${js.length} وظيفة`:`Apply to ${js.length} jobs`}</h2>
  ${dry?`<div class="sheetnote dry">🧪 ${AR?'وضع التجربة شغال: ما راح ينرسل شي للشركات، بس نجرب.':'Test mode: nothing is really sent.'}</div>`:`<div class="sheetnote">${AR?`بتنرسل من <b dir="ltr">${esc(ME.mail?.address||'')}</b> وحدة وحدة، بين كل وحدة ٢٠-٤٠ ثانية عشان ما ينحسب إيميلك سبام. تقدر تقفل الصفحة وبيكمّل.`:'Sent one by one from your email, 20-40s apart. You can close the page.'}</div>`}
- <p class="sheetsub">${AR?`باقي لك اليوم ${left} من ٥٠`:`${left} of 50 left today`}</p>
+ ${dup?`<p class="sheetsub">${AR?`شلنا ${dup} وظيفة لأنها لنفس إيميل الشركة، الشركة يوصلها طلب واحد بس`:`${dup} removed: same company email`}</p>`:''}<p class="sheetsub">${AR?`باقي لك اليوم ${left} من ٥٠`:`${left} of 50 left today`}</p>
  <ol class="sheetlist">${js.map(j=>`<li><b dir="auto">${esc(AR?j.title_ar:j.title)}</b><span>${esc(j.company)} · ${esc(j.city)}</span></li>`).join('')}</ol>
  <button class="btn big full" id="sgo">${AR?'أكّد وابدأ التقديم':'Confirm & start'}</button><button class="btn full" id="sno" style="margin-top:8px">${AR?'رجوع':'Back'}</button></div>`;
  document.body.appendChild(d);d.onclick=e=>{if(e.target===d)d.remove()};$('#sno').onclick=()=>d.remove();
- $('#sgo').onclick=async()=>{$('#sgo').disabled=true;$('#sgo').textContent='…';try{await api('/api/batch',{method:'POST',body:{jobIds:ids}});d.remove();location.hash='#/batch'}catch(e){$('#sgo').disabled=false;$('#sgo').textContent=AR?'أكّد وابدأ التقديم':'Confirm & start';
+ $('#sgo').onclick=async()=>{$('#sgo').disabled=true;$('#sgo').textContent='…';try{await api('/api/batch',{method:'POST',body:{jobIds:js.map(j=>j.id)}});d.remove();location.hash='#/batch'}catch(e){$('#sgo').disabled=false;$('#sgo').textContent=AR?'أكّد وابدأ التقديم':'Confirm & start';
   toast({nomail:AR?'اربط إيميلك أول من الإعدادات':'Connect your email first',running:AR?'عندك دفعة شغالة، استنها تخلص':'A batch is already running',cap:AR?'وصلت حد اليوم (٥٠)، كمّل بكرة':'Daily limit reached',nothing:AR?'كلها مقدّم عليها من قبل':'All already applied',batchmax:AR?'الحد ٢٥ بالدفعة':'Max 25',nocv:AR?'ارفع سيرتك أول':'Upload your CV'}[e.error]||'Error')}}}
 let BT=null;
 async function batch(){clearTimeout(BT);const b=await api('/api/batch/current');
@@ -180,7 +180,7 @@ async function batch(){clearTimeout(BT);const b=await api('/api/batch/current');
  ${b.dry?`<div class="sheetnote dry">🧪 ${AR?'وضع التجربة: ما انرسل شي فعلياً':'Test mode: simulated only'}</div>`:''}
  <div class="pbar"><i style="width:${Math.round(doneN/n*100)}%"></i></div>
  <div class="pnums"><span class="g">${AR?'انرسل':'Sent'} ${ok}</span><span class="r">${AR?'فشل':'Failed'} ${bad}</span><span>${doneN} / ${n}</span></div>
- ${b.skipped?`<p class="sheetsub">${AR?`تجاوزنا ${b.skipped} وظيفة مقدّم عليها من قبل`:`Skipped ${b.skipped} already applied`}</p>`:''}
+ ${b.skipped?`<p class="sheetsub">${AR?`تجاوزنا ${b.skipped} وظيفة مقدّم عليها من قبل أو لنفس إيميل الشركة`:`Skipped ${b.skipped} already applied`}</p>`:''}
  ${run?`<p class="sheetsub">${AR?'تقدر تقفل الصفحة، التقديم يكمّل لحاله.':'You can close this page; it keeps going.'}</p>`:''}
  <div class="blist">${b.items.map(i=>`<div class="bi ${i.status}"><div><b dir="auto">${esc(AR?i.title_ar:i.title)}</b><span>${esc(i.company)}</span>${i.error?`<span class="er">${esc(i.error)}</span>`:''}</div><em>${stTxt(i.status)}</em></div>`).join('')}</div>
  ${run?`<button class="btn full" id="bcan" style="margin-top:14px">${AR?'وقّف الباقي':'Stop the rest'}</button>`:`<a class="btn big full" href="#/apps" style="margin-top:14px">${AR?'سجل الطلبات':'Applications history'}</a>`}</div>`;

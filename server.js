@@ -389,7 +389,16 @@ app.delete('/api/account', auth, (req, res) => {
   if (req.u.cv) try { fs.unlinkSync(req.u.cv.file); } catch {} delFile(req.u.id);
   db.apps = db.apps.filter(a => a.uid !== req.u.id); db.users = db.users.filter(u => u.id !== req.u.id); save(); res.clearCookie('s'); res.json({ ok: 1 });
 });
+// ---------- job ingestion (public Telegram previews + RSS), every ~2.5h ----------
+const { runIngest } = require('./ingest');
+let ingesting = null; const INGEST_EVERY = 150 * 60e3;
+const ingestNow = () => ingesting || (ingesting = runIngest(db, save).catch(e => ({ error: e.message })).finally(() => { ingesting = null; }));
+const ingestIfStale = () => { const l = Date.parse(db.meta?.lastIngest || 0) || 0; if (Date.now() - l > INGEST_EVERY - 60e3) ingestNow(); };
+app.post('/api/admin/ingest', async (req, res) => { if (!isAdmin(req)) return res.status(403).end(); if (req.query.async) { ingestNow(); return res.json({ started: true }); } res.json(await ingestNow()); });
+app.get('/api/admin/ingest', (req, res) => { if (!isAdmin(req)) return res.status(403).end(); res.json({ running: !!ingesting, ...(db.meta?.lastReport || {}) }); });
+app.get('/api/jobs/meta', (req, res) => res.json({ lastUpdated: db.meta?.lastIngest || null, total: db.jobs.filter(j => !j.hidden).length, running: !!ingesting }));
+app.get('/api/wake', (req, res) => { ingestIfStale(); res.json({ ok: 1, lastUpdated: db.meta?.lastIngest || null }); });
 app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
 app.get('/healthz', (req, res) => res.send('ok'));
 app.use((err, req, res, next) => { if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'too_large' }); console.error('err', err && err.message); res.status(500).json({ error: 'server' }); });
-boot().then(() => app.listen(PORT, () => console.log('Wasel on ' + PORT, PG ? '(postgres)' : '(file)')));
+boot().then(() => { app.listen(PORT, () => console.log('Wasel on ' + PORT, PG ? '(postgres)' : '(file)')); setTimeout(ingestIfStale, 45e3); setInterval(ingestIfStale, 10 * 60e3); });

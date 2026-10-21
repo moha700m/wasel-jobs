@@ -62,14 +62,17 @@ function filterJobs(all,f){
   const g=ME.profile.gender;
   if(f==='women') return all.filter(j=>['women_only','women_preferred'].includes(j.gender));
   if(f==='men') return all.filter(j=>j.gender==='men_only');
-  if(f==='open') return all.filter(j=>j.gender==='open'||j.gender==='women_preferred');
-  // for_me: already filtered server-side for gender
+  if(f==='open') return all.filter(j=>j.gender==='open');
+  if(g==='f') return all.filter(j=>['women_only','women_preferred'].includes(j.gender));
+  if(g==='m') return all.filter(j=>j.gender==='men_only');
   return all;
 }
 function groupByType(list){
   const order=['صحة','تعليم','مبيعات','ضيافة','إداري','تقنية','نظافة','أمن','هندسة','صناعة'];
   const map={}; list.forEach(j=>{const k=j.type||'أخرى';(map[k]=map[k]||[]).push(j)});
-  const keys=[...order.filter(k=>map[k]),...Object.keys(map).filter(k=>!order.includes(k))];
+  const best=k=>Math.max(...map[k].map(j=>j.score));
+  const keys=Object.keys(map).sort((x,y)=>best(y)-best(x)||order.indexOf(x)-order.indexOf(y));
+  keys.forEach(k=>map[k].sort((x,y)=>y.score-x.score));
   return keys.map(k=>({type:k,type_en:map[k][0].type_en||k,jobs:map[k]}));
 }
 function renderJobList(){

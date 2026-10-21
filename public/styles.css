@@ -98,3 +98,4 @@ details.alt{border:1px solid var(--line);border-radius:16px;padding:14px 16px;ma
 html[data-g=f] .seg.on{color:#f2a5cf}html[data-g=m] .seg.on{color:var(--pri)}
 .type-block{margin:18px 0 8px}.type-h{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:15px;margin:0 4px 10px;padding-bottom:8px;border-bottom:1px solid var(--line);color:var(--tx)}
 .type-h .muted{font-weight:500;font-size:13px}
+main.app{padding-bottom:calc(130px + env(safe-area-inset-bottom))!important}

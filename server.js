@@ -195,10 +195,11 @@ function compose(u, j) {
     : `${j.kind === 'open' ? (p.title || j.title) : j.title} – ${name}${p.city ? ' – ' + p.city : ''}`;
   const sk = (p.skills || []).slice(0, 5).join('، '), skEn = (p.skills || []).slice(0, 5).join(', ');
   const yrs = p.years ? `${p.years} سنوات خبرة` : 'خبرة عملية', yrsEn = p.years ? `${p.years} years of experience` : 'hands-on experience';
+  const iso = x => '\u2068' + x + '\u2069'; const ph = p.phone ? iso(p.phone) : '';
   const nat = p.nationality ? ` (${p.nationality})` : '';
-  const ar = `السلام عليكم ورحمة الله،\n\nأتقدم لكم بطلب ${j.kind === 'open' ? 'الانضمام إلى فريق ' + j.company : 'وظيفة «' + j.title_ar + '»'}${j.city ? ' في ' + j.city : ''}. لدي ${yrs}${p.title ? ' كـ' + p.title : ''}${sk ? '، ومن أبرز مهاراتي: ' + sk : ''}.\n\nمرفق سيرتي الذاتية، ويسعدني التواصل معكم في أي وقت${p.phone ? ' على الرقم ' + p.phone : ''}.\n\nمع خالص التحية،\n${name}${nat}`;
-  const en = `Dear Hiring Team,\n\nI would like to apply for ${j.kind === 'open' ? 'a suitable role at ' + j.company : 'the ' + j.title + ' position'}${j.city ? ' in ' + j.city : ''}. I bring ${yrsEn}${p.title ? ' as a ' + p.title : ''}${skEn ? ', with strengths in ' + skEn : ''}.\n\nPlease find my CV attached. I am available for an interview at your convenience${p.phone ? ' on ' + p.phone : ''}.\n\nBest regards,\n${name}`;
-  return { subject: sub, body: lang === 'ar' ? ar : lang === 'en' ? en : ar + '\n\n———\n\n' + en };
+  const ar = `السلام عليكم ورحمة الله،\n\nأتقدم لكم بطلب ${j.kind === 'open' ? 'الانضمام إلى فريق ' + j.company : 'وظيفة «' + j.title_ar + '»'}${j.city ? ' في ' + j.city : ''}. لدي ${yrs}${p.title ? ' كـ' + p.title : ''}${sk ? '، ومن أبرز مهاراتي: ' + sk : ''}.\n\nمرفق سيرتي الذاتية، ويسعدني التواصل معكم في أي وقت${ph ? ' على الرقم ' + ph : ''}.\n\nمع خالص التحية،\n${name}${nat}`;
+  const en = `Dear Hiring Team,\n\nI would like to apply for ${j.kind === 'open' ? 'a suitable role at ' + j.company : 'the ' + j.title + ' position'}${j.city ? ' in ' + j.city : ''}. I bring ${yrsEn}${p.title ? ' as a ' + p.title : ''}${skEn ? ', with strengths in ' + skEn : ''}.\n\nPlease find my CV attached. I am available for an interview at your convenience${ph ? ' on ' + ph : ''}.\n\nBest regards,\n${iso(name)}`;
+  return { subject: sub, body: lang === 'ar' ? ar : lang === 'en' ? en.replace(/\n[^\n]*$/, '\n' + iso(name)) : ar + '\n\n———\n\n' + en };
 }
 const sentToday = u => { const d = new Date().toISOString().slice(0, 10); return db.apps.filter(a => a.uid === u.id && ['sent', 'dry-run'].includes(a.status) && (a.sentAt || '').startsWith(d)).length; };
 

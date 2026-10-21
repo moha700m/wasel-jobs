@@ -253,14 +253,18 @@ async function sendApps(u, ids) {
 app.post('/api/apps/send', auth, async (req, res) => { if (!req.u.mail && !(GLOBAL_DRY || req.u.prefs.dryRun)) return res.status(400).json({ error: 'nomail' }); res.json(await sendApps(req.u, req.body.ids || [])); });
 
 // auto mode: hourly, matches >= 40, respecting daily cap
-setInterval(async () => {
+async function runAuto() {
+  const out = [];
   for (const u of db.users.filter(u => u.prefs.mode === 'auto' && u.cv && u.mail)) {
     const done = applied(u); const room = u.prefs.dailyCap - sentToday(u); if (room <= 0) continue;
     const jobs = db.jobs.filter(j => genderOk(u, j) && !done.has(j.email.toLowerCase()) && score(u, j) >= 40).slice(0, room);
     const ids = jobs.map(j => { const a = { id: db.seq++, uid: u.id, jobId: j.id, to: j.email, ...compose(u, j), status: 'draft', created: new Date().toISOString(), auto: true }; db.apps.push(a); return a.id; });
-    if (ids.length) await sendApps(u, ids);
+    if (ids.length) out.push(...(await sendApps(u, ids)).map(a => ({ uid: u.id, to: a.to, status: a.status })));
   }
-}, 60 * 60 * 1000);
+  return out;
+}
+setInterval(runAuto, 60 * 60 * 1000);
+app.post('/api/admin/run-auto', async (req, res) => { if (!isAdmin(req)) return res.status(403).end(); res.json(await runAuto()); });
 
 const isAdmin = req => ADMIN_TOKEN && req.get('x-admin-token') === ADMIN_TOKEN;
 app.delete('/api/admin/jobs/:id', (req, res) => { if (!isAdmin(req)) return res.status(403).end(); const n = db.jobs.length; db.jobs = db.jobs.filter(j => j.id != req.params.id); db.apps = db.apps.filter(a => a.jobId != req.params.id); save(); res.json({ removed: n - db.jobs.length }); });

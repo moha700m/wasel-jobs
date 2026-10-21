@@ -18,8 +18,10 @@ fs.mkdirSync(path.join(DATA, 'cv'), { recursive: true });
 const DBF = path.join(DATA, 'db.json');
 let db = fs.existsSync(DBF) ? JSON.parse(fs.readFileSync(DBF, 'utf8')) : { users: [], jobs: [], apps: [], seq: 1 };
 // Optional persistent Postgres (DATABASE_URL): whole state as one JSONB row + CV files as bytea.
-const DATABASE_URL = process.env.DATABASE_URL || (process.env.DATABASE_URL_B64 ? Buffer.from(process.env.DATABASE_URL_B64, 'base64').toString('utf8') : '') || ((process.env.DB_P1 && process.env.DB_P2 && process.env.DB_P3) ? Buffer.from(process.env.DB_P1 + process.env.DB_P2 + process.env.DB_P3, 'base64').toString('utf8') : '');
-const PG = DATABASE_URL ? new (require('pg').Pool)({ connectionString: DATABASE_URL, ssl: /render\.com|neon|supabase/.test(DATABASE_URL) ? { rejectUnauthorized: false } : false }) : null;
+const _dec = s => { try { return Buffer.from(s || '', 'base64').toString('utf8'); } catch { return ''; } };
+const _isPg = s => /^postgres(ql)?:\/\//.test(s || '');
+const DATABASE_URL = [process.env.DATABASE_URL, _dec(process.env.DATABASE_URL_B64), _dec((process.env.DB_P1 || '') + (process.env.DB_P2 || '') + (process.env.DB_P3 || ''))].find(_isPg) || '';
+let PG = DATABASE_URL ? new (require('pg').Pool)({ connectionString: DATABASE_URL, ssl: /render\.com|neon|supabase/.test(DATABASE_URL) ? { rejectUnauthorized: false } : false }) : null;
 let pgTimer = null;
 const save = () => { fs.writeFileSync(DBF + '.tmp', JSON.stringify(db)); fs.renameSync(DBF + '.tmp', DBF);
   if (PG) { clearTimeout(pgTimer); pgTimer = setTimeout(() => PG.query('INSERT INTO kv(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', ['db', JSON.stringify(db)]).catch(e => console.error('pg save', e.message)), 300); } };
@@ -28,13 +30,13 @@ const delFile = uid => PG && PG.query('DELETE FROM files WHERE uid=$1', [uid]).c
 function seedJobs() { // merge seed (adds new fields like gender) by email+title
   for (const j of SEED) { const e = db.jobs.find(x => x.email === j.email && x.title === j.title); if (e) Object.assign(e, j); else db.jobs.push({ id: db.seq++, ...j, added: new Date().toISOString() }); } }
 async function boot() {
-  if (PG) {
+  if (PG) try {
     await PG.query('CREATE TABLE IF NOT EXISTS kv(k text primary key, v jsonb)'); await PG.query('CREATE TABLE IF NOT EXISTS files(uid int primary key, ext text, data bytea)');
     const r = await PG.query("SELECT v FROM kv WHERE k='db'"); if (r.rows[0]) db = r.rows[0].v;
     for (const f of (await PG.query('SELECT uid,ext,data FROM files')).rows) fs.writeFileSync(path.join(DATA, 'cv', f.uid + f.ext), f.data);
     for (const u of db.users) if (u.cv) u.cv.file = path.join(DATA, 'cv', path.basename(u.cv.file));
     console.log('Postgres storage: loaded', db.users.length, 'users');
-  }
+  } catch (e) { console.error('Postgres unavailable, using file storage:', e.message); PG = null; }
   // Migrate: if jobs lack type/gender audience, rebuild from seed (preserve id by email+title when possible)
   if (!db.jobs.length || db.jobs.some(j => !j.type || !['women_only','men_only','women_preferred','open'].includes(j.gender))) {
     const old = db.jobs.slice(); db.jobs = [];

@@ -54,3 +54,4 @@ html[dir=rtl] .toast{transform:translateX(50%)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:12px 8px;border-bottom:1px solid var(--line);text-align:start}th{color:var(--mut);font-weight:500}
 .prose{max-width:780px}.prose h2{margin-top:32px}.prose p,.prose li{color:#c7d6ce}
 @media(max-width:640px){.hide-m{display:none}.hero{padding:50px 0 30px}.job{flex-direction:column}.tbl-wrap{overflow:auto}}
+@media(max-width:640px){table,tbody,tr,td{display:block;width:100%}tr:first-child{display:none}tr{border-bottom:1px solid var(--line);padding:10px 0}td{border:0;padding:3px 0}.tbl-wrap{overflow:visible}}

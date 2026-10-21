@@ -85,7 +85,7 @@ app.post('/api/login', async (req, res) => {
 });
 app.post('/api/logout', (req, res) => { res.clearCookie('s'); res.json({ ok: 1 }); });
 app.get('/api/me', auth, (req, res) => res.json(pub(req.u)));
-app.get('/api/config', (req, res) => res.json({ google: !!(G_ID && G_SECRET), dryRun: GLOBAL_DRY }));
+app.get('/api/config', (req, res) => res.json({ google: !!(G_ID && G_SECRET), dryRun: GLOBAL_DRY, smtp: process.env.SMTP_ENABLED !== '0' }));
 
 // ---------- CV parsing ----------
 const CITIES = { 'riyadh': 'Riyadh', 'الرياض': 'Riyadh', 'jeddah': 'Jeddah', 'جدة': 'Jeddah', 'جده': 'Jeddah', 'dammam': 'Dammam', 'الدمام': 'Dammam',
@@ -133,7 +133,7 @@ app.post('/api/mail/smtp', auth, async (req, res) => {
   if (!host || !user || !pass) return res.status(400).json({ error: 'missing' });
   const cfg = { host, port: +port || 465, secure: (+port || 465) === 465, auth: { user, pass } };
   try { await nodemailer.createTransport({ ...cfg, connectionTimeout: 10000 }).verify(); }
-  catch (e) { return res.status(400).json({ error: 'verify', detail: String(e.message).replace(pass, '***').slice(0, 160) }); }
+  catch (e) { const m = String(e.message); if (/timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH/i.test(m) && !/127\.0\.0\.1|localhost/.test(host)) return res.status(400).json({ error: 'smtp_blocked', detail: 'SMTP port unreachable from server' }); return res.status(400).json({ error: 'verify', detail: m.replace(pass, '***').slice(0, 160) }); }
   req.u.mail = { type: 'smtp', address: user, fromName: fromName || req.u.profile.name, verified: new Date().toISOString(), secret: enc(cfg) };
   save(); res.json(pub(req.u));
 });
@@ -256,7 +256,7 @@ app.post('/api/apps/send', auth, async (req, res) => { if (!req.u.mail && !(GLOB
 // auto mode: hourly, matches >= 40, respecting daily cap
 async function runAuto() {
   const out = [];
-  for (const u of db.users.filter(u => u.prefs.mode === 'auto' && u.cv && u.mail)) {
+  for (const u of db.users.filter(u => u.prefs.mode === 'auto' && u.cv && (u.mail || u.prefs.dryRun || GLOBAL_DRY))) {
     const done = applied(u); const room = u.prefs.dailyCap - sentToday(u); if (room <= 0) continue;
     const jobs = db.jobs.filter(j => genderOk(u, j) && !done.has(j.email.toLowerCase()) && score(u, j) >= 40).slice(0, room);
     const ids = jobs.map(j => { const a = { id: db.seq++, uid: u.id, jobId: j.id, to: j.email, ...compose(u, j), status: 'draft', created: new Date().toISOString(), auto: true }; db.apps.push(a); return a.id; });
